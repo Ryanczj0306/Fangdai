@@ -138,7 +138,7 @@
         <div class="f"><label>贷款年限</label><div class="iw"><select id="loanYears"><option value="15">15年</option><option value="20">20年</option><option value="30" selected>30年</option></select></div></div>
         <div class="f"><label>每月还款额（可多还）</label><div class="iw"><input id="customPay" type="number" value="3500" placeholder="同左" min="0" step="50" class="hu"><span class="u">$</span></div></div>
         <div class="f" style="align-items:center;">
-          <label style="cursor:pointer;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="downPayByCredit" checked style="width:16px;height:16px;"><span id="downPayByCreditText">首付由 credits/建筑商支付（租房对比时不算入可投资本金）</span></label>
+          <label style="cursor:pointer;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="downPayByCredit" checked style="width:16px;height:16px;"><span id="downPayByCreditText">首付由 credits/建筑商支付（租房方用自付部分炒股，公平对比）</span></label>
         </div>
       </div>
       <div class="ig">
@@ -291,8 +291,8 @@ function applyStaticI18n() {
   const downPayByCreditText = document.getElementById('downPayByCreditText');
   if (downPayByCreditText) {
     downPayByCreditText.textContent = T(
-      '首付由 credits/建筑商支付（租房对比时不算入可投资本金）',
-      'Down payment paid by credits/builder (exclude from renter investable cash)'
+      '首付由 credits/建筑商支付（租房方用自付部分炒股，公平对比）',
+      'Down payment via credits/builder (renter invests out-of-pocket part for fair comparison)'
     );
   }
 
@@ -593,7 +593,7 @@ function render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, rent
       <div class="rbox"><h4>${T(`租房 ${py} 年 + 股市投资`,`Renting ${py} Years + Stock Investing`)}</h4>
         <div class="rl"><span class="k">${T(`${py}年累计租金`,`${py}-Year Total Rent`)}</span><span class="v">${F(s.cRent)}</span></div>
         <div class="rl"><span class="k">${T('买房净成本比租房多花','Buy Net Cost minus Rent')}</span><span class="v ${s.cExtra>0?'r':'g'}">${F(s.cExtra)}</span></div>
-        <div class="rl sep"><span class="k">${I.downPayByCredit ? T('首付由 credits 支付，租房方初始','Down Payment via Credits, Renter Initial') : T('首付投入股市','Down Payment Invested')}</span><span class="v">${F(renterInitial)}</span></div>
+        <div class="rl sep"><span class="k">${I.downPayByCredit ? T('首付自付部分（租房方可炒股）','Out-of-Pocket Down (Renter Invests This)') : T('首付投入股市','Down Payment Invested')}</span><span class="v">${F(renterInitial)}</span></div>
         <div class="rl"><span class="k">${T('每月差额累计投入','Cumulative Monthly Difference Invested')}</span><span class="v">${F(s.cInvested - renterInitial)}</span></div>
         <div class="rl"><span class="k">${T(`股市投资收益 (${I.sr}%/年)`,`Stock Investment Gain (${I.sr}%/yr)`)}</span><span class="v g">${F(stockGain)}</span></div>
         <div class="rl total"><span class="k">${T('股市投资总值','Stock Portfolio Value')}</span><span class="v">${F(s.stk)}</span></div>
@@ -620,7 +620,7 @@ function render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, rent
 
       <tr class="spacer"><td colspan="2"></td></tr>
       <tr class="section-head2"><td colspan="2">${T('Step 2: 如果租房，首付+多花的钱投股市值多少','Step 2: Rent + Invest Net Value')}</td></tr>
-      <tr><td>${I.downPayByCredit ? T('首付由 credits 支付，租房方初始','Down Payment via Credits, Renter Initial') : T('首付金额（初始投入股市）','Initial Down Payment Investment')}</td><td>${F(renterInitial)}</td></tr>
+      <tr><td>${I.downPayByCredit ? T('首付自付部分（租房方可炒股）','Out-of-Pocket Down (Renter Invests This)') : T('首付金额（初始投入股市）','Initial Down Payment Investment')}</td><td>${F(renterInitial)}</td></tr>
       <tr><td>${T('+ 买房比租房每月多花累计投入','+ Cumulative Monthly Difference Invested')}</td><td>${F(s.cInvested - renterInitial)}</td></tr>
       <tr><td>${T(`+ ${py}年股市投资收益（年化${I.sr}%）`,`+ ${py}-Year Stock Gain (${I.sr}% annualized)`)}</td><td style="color:var(--success)">${F(stockGain)}</td></tr>
       <tr class="sub"><td>${T('= 租房+投资净值 (B)','= Renter Net Value (B)')}</td><td style="color:var(--warning)">${F(s.stk)}</td></tr>
