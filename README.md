@@ -7,6 +7,7 @@ A lightweight single-page calculator for comparing:
 
 It supports bilingual UI (**中文 / English**) and is designed for Texas-style scenarios (property tax, homestead exemption, MCC, builder/FTHB credits).
 
+## Try it out!!! https://ryanczj0306.github.io/Fangdai/
 ## Features
 
 - Interactive input panel (home price, down payment, APR, tax/fees, rent, stock return, home appreciation)
