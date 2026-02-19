@@ -138,7 +138,7 @@
         <div class="f"><label>贷款年限</label><div class="iw"><select id="loanYears"><option value="15">15年</option><option value="20">20年</option><option value="30" selected>30年</option></select></div></div>
         <div class="f"><label>每月还款额（可多还）</label><div class="iw"><input id="customPay" type="number" value="3500" placeholder="同左" min="0" step="50" class="hu"><span class="u">$</span></div></div>
         <div class="f" style="align-items:center;">
-          <label style="cursor:pointer;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="downPayByCredit" checked style="width:16px;height:16px;"><span id="downPayByCreditText">首付由 credits/建筑商支付（租房方用自付部分炒股，公平对比）</span></label>
+          <label style="cursor:pointer;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="downPayByCredit" checked style="width:16px;height:16px;"><span id="downPayByCreditText">首付由 credits/建筑商支付</span></label>
         </div>
       </div>
       <div class="ig">
@@ -291,8 +291,8 @@ function applyStaticI18n() {
   const downPayByCreditText = document.getElementById('downPayByCreditText');
   if (downPayByCreditText) {
     downPayByCreditText.textContent = T(
-      '首付由 credits/建筑商支付（租房方用自付部分炒股，公平对比）',
-      'Down payment via credits/builder (renter invests out-of-pocket part for fair comparison)'
+      '首付由 credits/建筑商支付',
+      'Down payment via credits/builder'
     );
   }
 
