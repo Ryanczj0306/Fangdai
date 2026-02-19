@@ -149,7 +149,7 @@
         <div class="f"><label>房屋保险（年）</label><div class="iw"><input id="insurance" type="number" value="4800" class="hu"><span class="u">$</span></div></div>
         <div class="f"><label>房屋维修费（年）</label><div class="iw"><input id="maintenance" type="number" value="3500" class="hu"><span class="u">$</span></div></div>
         <div class="f"><label>所得税率</label><div class="iw"><input id="taxRate" type="number" value="20" step="1" class="hu"><span class="u">%</span></div></div>
-        <div class="f"><label>MCC 税收抵免（年）</label><div class="iw"><input id="mcc" type="number" value="2000" class="hu"><span class="u">$</span></div></div>
+        <div class="f"><label>MCC 比例（利息的%）</label><div class="iw"><input id="mccPct" type="number" value="15" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
       </div>
       <div class="ig">
         <h3>租房对比</h3>
@@ -162,7 +162,7 @@
         <div class="f"><label>房市年增值率</label><div class="iw"><input id="houseReturn" type="number" value="4" step="0.5" class="hu"><span class="u">%</span></div></div>
       </div>
       <button class="btn-calc" onclick="calculate()">计 算</button>
-      <p class="note">* 房贷抵扣：首购/建筑商优惠，按房贷金额的该比例从贷款额中扣除（少贷），月供与利息按扣减后贷款计算。月供留空按最低月供；可多还提前还清。Homestead、MCC、卖房7%见上。</p>
+      <p class="note">* 房贷抵扣：首购/建筑商优惠，按房贷金额的该比例从贷款额中扣除（少贷），月供与利息按扣减后贷款计算。月供留空按最低月供；可多还提前还清。MCC：按利息的设定比例作为抵免额，剩余利息+房产税再按所得税率抵税。Homestead、卖房7%见上。</p>
       <p class="note" style="margin-top:4px;color:var(--text2);">为何有时“越久越亏”？当持有成本高、房市增值(3%)&lt;股市(8%)时，买房每月多花的钱在股市里复利更快，短期会显亏；<strong>多还月供提前还清</strong>后月支出大降，长期买房优势会体现。</p>
     </div>
 
@@ -259,7 +259,7 @@ let currentLang = 'zh';
 const T = (zh, en) => currentLang === 'zh' ? zh : en;
 const SCENARIO_FIELD_IDS = [
   'homePrice','downPct','loanCredit','apr','loanYears','customPay','downPayByCredit',
-  'propTax','homestead','hoa','insurance','maintenance','taxRate','mcc',
+  'propTax','homestead','hoa','insurance','maintenance','taxRate','mccPct',
   'rent','rentGrowth','stockReturn','houseReturn','planSlider'
 ];
 
@@ -277,12 +277,12 @@ function applyStaticI18n() {
   const labels = document.querySelectorAll('.input-panel .f > label:not([style])');
   const labelsZh = [
     '房屋购买价格', '首付比例', '房贷抵扣（首购/建筑商）', '贷款年利率 (APR)', '贷款年限', '每月还款额（可多还）',
-    '房产税率（年）', '自住房减免额', 'HOA 月费', '房屋保险（年）', '房屋维修费（年）', '所得税率', 'MCC 税收抵免（年）',
+    '房产税率（年）', '自住房减免额', 'HOA 月费', '房屋保险（年）', '房屋维修费（年）', '所得税率', 'MCC 比例（利息的%）',
     '每月租金', '租金年涨幅', '股市年回报率', '房市年增值率'
   ];
   const labelsEn = [
     'Home Price', 'Down Payment %', 'Loan Credit (FTHB/Builder)', 'APR', 'Loan Term', 'Monthly Payment (Optional Extra)',
-    'Property Tax Rate (Annual)', 'Homestead Exemption', 'HOA Monthly', 'Home Insurance (Annual)', 'Maintenance (Annual)', 'Income Tax Rate', 'MCC Credit (Annual)',
+    'Property Tax Rate (Annual)', 'Homestead Exemption', 'HOA Monthly', 'Home Insurance (Annual)', 'Maintenance (Annual)', 'Income Tax Rate', 'MCC Rate (% of interest)',
     'Monthly Rent', 'Rent Growth (Annual)', 'Stock Return (Annual)', 'Home Appreciation (Annual)'
   ];
   labels.forEach((el, i) => { if (labelsZh[i]) el.textContent = T(labelsZh[i], labelsEn[i]); });
@@ -306,8 +306,8 @@ function applyStaticI18n() {
 
   const notes = document.querySelectorAll('.input-panel .note');
   if (notes[0]) notes[0].textContent = T(
-    '* 房贷抵扣：按房贷金额比例直接少贷。月供留空按最低月供；可多还提前还清。Homestead、MCC、卖房7%见上。',
-    '* Loan credit reduces principal directly by a % of mortgage. Empty monthly payment uses minimum. Extra payment allows early payoff. Homestead, MCC, and 7% selling cost are included.'
+    '* 房贷抵扣：按房贷金额比例直接少贷。月供留空按最低月供；可多还提前还清。MCC：利息的设定比例作为抵免额，剩余利息+房产税按所得税率抵税。Homestead、卖房7%见上。',
+    '* Loan credit reduces principal by % of mortgage. MCC: a % of interest is credit; remaining interest + property tax are deductible at your tax rate. Homestead, 7% selling cost included.'
   );
   if (notes[1]) notes[1].innerHTML = T(
     '为何有时“越久越亏”？当持有成本高、房市增值(3%)&lt;股市(8%)时，买房每月多花的钱在股市里复利更快，短期会显亏；<strong>多还月供提前还清</strong>后月支出大降，长期买房优势会体现。',
@@ -418,7 +418,7 @@ function getI() {
     hp:+$('homePrice').value||0, dp:+$('downPct').value||0, apr:+$('apr').value||0,
     ly:+$('loanYears').value||30, ptr:+$('propTax').value||0, hs:+$('homestead').value||0,
     hoa:+$('hoa').value||0, ins:+$('insurance').value||0, mnt:+$('maintenance').value||0,
-    tr:+$('taxRate').value||0, mcc:+$('mcc').value||0,
+    tr:+$('taxRate').value||0, mccPct: Math.max(0, Math.min(100, +$('mccPct').value || 15)),
     rent:+$('rent').value||0, rg:+$('rentGrowth').value||0,
     sr:+$('stockReturn').value||0, hr:+$('houseReturn').value||0,
     py:Math.min(30,Math.max(1,+$('planSlider').value||10)),
@@ -446,7 +446,7 @@ function calculate() {
 
   const smr = Math.pow(1 + I.sr/100, 1/12) - 1;
   const txR = I.tr / 100;
-  const mMCCMax = I.mcc / 12;
+  const mccRate = I.mccPct / 100; // MCC credit = interest * mccRate; remainder is deductible at txR
 
   const renterInitial = I.downPayByCredit ? 0 : downPay;
   let bal = loan, stk = renterInitial, buyerStk = 0;
@@ -476,7 +476,7 @@ function calculate() {
       }
       yInt += mInt; yPrin += mPrin;
 
-      const mMCC = Math.min(mMCCMax, mInt);
+      const mMCC = mInt * mccRate;
       const dedInt = Math.max(0, mInt - mMCC);
       const txDed = (dedInt + mPT) * txR;
       const benefit = mMCC + txDed;
