@@ -133,8 +133,8 @@
         <h3>贷款信息</h3>
         <div class="f"><label>房屋购买价格</label><div class="iw"><input id="homePrice" type="number" value="400000" class="hu"><span class="u">$</span></div></div>
         <div class="f"><label>首付比例</label><div class="iw"><input id="downPct" type="number" value="5" min="3" step="1" class="hu"><span class="u">%</span></div></div>
-        <div class="f"><label>首付抵扣（credits/建筑商，仅首付）</label><div class="iw"><input id="loanCredit" type="number" value="5" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
-        <div class="f"><label>贷款年利率 (APR)</label><div class="iw"><input id="apr" type="number" value="7.00" step="0.01" min="0" max="30" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>首付抵扣</label><div class="iw"><input id="loanCredit" type="number" value="5" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>贷款年利率 (APR)</label><div class="iw"><input id="apr" type="number" value="7.000" step="0.001" min="0" max="30" class="hu"><span class="u">%</span></div></div>
         <div class="f"><label>贷款年限</label><div class="iw"><select id="loanYears"><option value="15">15年</option><option value="20">20年</option><option value="30" selected>30年</option></select></div></div>
         <div class="f"><label>每月还款额（可多还）</label><div class="iw"><input id="customPay" type="number" value="3500" placeholder="同左" min="0" step="50" class="hu"><span class="u">$</span></div></div>
         <div class="f" style="align-items:center;">
@@ -277,12 +277,12 @@ function applyStaticI18n() {
 
   const labels = document.querySelectorAll('.input-panel .f > label:not([style])');
   const labelsZh = [
-    '房屋购买价格', '首付比例', '首付抵扣（credits/建筑商，仅首付）', '贷款年利率 (APR)', '贷款年限', '每月还款额（可多还）',
+    '房屋购买价格', '首付比例', '首付抵扣', '贷款年利率 (APR)', '贷款年限', '每月还款额（可多还）',
     '房产税率（年）', '自住房减免额', 'HOA 月费', 'PMI 月费（还本<20%时）', '房屋保险（年）', '房屋维修费（年）', '所得税率', 'MCC 比例（利息的%）',
     '每月租金', '租金年涨幅', '股市年回报率', '房市年增值率'
   ];
   const labelsEn = [
-    'Home Price', 'Down Payment %', 'Credits for Down Only (FTHB/Builder)', 'APR', 'Loan Term', 'Monthly Payment (Optional Extra)',
+    'Home Price', 'Down Payment %', 'Credits', 'APR', 'Loan Term', 'Monthly Payment (Optional Extra)',
     'Property Tax Rate (Annual)', 'Homestead Exemption', 'HOA Monthly', 'PMI Monthly (when equity < 20%)', 'Home Insurance (Annual)', 'Maintenance (Annual)', 'Income Tax Rate', 'MCC Rate (% of interest)',
     'Monthly Rent', 'Rent Growth (Annual)', 'Stock Return (Annual)', 'Home Appreciation (Annual)'
   ];
