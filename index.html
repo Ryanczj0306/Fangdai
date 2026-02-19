@@ -418,7 +418,7 @@ function getI() {
   return {
     hp:+$('homePrice').value||0, dp:Math.max(3, +$('downPct').value||3), apr:+$('apr').value||0,
     ly:+$('loanYears').value||30, ptr:+$('propTax').value||0, hs:+$('homestead').value||0,
-    hoa:+$('hoa').value||0, pmi:Math.max(0, +$('pmi').value||315), ins:+$('insurance').value||0, mnt:+$('maintenance').value||0,
+    hoa:+$('hoa').value||0, pmi:Math.max(0, $('pmi').value===''?315:+$('pmi').value), ins:+$('insurance').value||0, mnt:+$('maintenance').value||0,
     tr:+$('taxRate').value||0, mccPct: Math.max(0, Math.min(100, +$('mccPct').value || 15)),
     rent:+$('rent').value||0, rg:+$('rentGrowth').value||0,
     sr:+$('stockReturn').value||0, hr:+$('houseReturn').value||0,
@@ -480,7 +480,7 @@ function calculate() {
       }
       yInt += mInt; yPrin += mPrin;
 
-      const pmi = (loanOrig > 0 && cumPrin < 0.2 * loanOrig) ? I.pmi : 0;
+      const pmi = (downPay + cumPrin < 0.2 * I.hp) ? I.pmi : 0;
       yPMI += pmi;
 
       const mMCC = mInt * mccRate;
