@@ -78,6 +78,12 @@ Fangdai/
 
 The web calculator is a single file at the repo root. Settings → Pages → deploy from `main` branch, folder `/ (root)`.
 
-## License / disclaimer
+## License
 
-This is a personal house-hunt toolkit. The Buy vs Rent calculator is a planning aid, not financial advice — verify any scenario against your lender's actual numbers. The Redfin scraping in `house-hunt/` uses an undocumented endpoint at moderate rate; use at your own risk and respect Redfin's terms of service.
+[MIT](./LICENSE) — © 2026 Zijian Chen. Use, modify, redistribute freely; no warranty.
+
+## Disclaimer
+
+- The Buy vs Rent calculator is a planning aid, **not financial advice**. Verify any scenario against your lender's actual numbers and your own tax situation before making a decision.
+- The `house-hunt/` tool scrapes Redfin's undocumented `gis-csv` endpoint. Read [`house-hunt/README.md → Acceptable use & TOS notice`](./house-hunt/README.md#acceptable-use--tos-notice) before running it. The committed sample CSV/HTML let you explore the map without scraping anything.
+- This repo is not affiliated with Redfin, TSAHC, or any other entity.

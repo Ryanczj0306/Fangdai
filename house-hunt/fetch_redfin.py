@@ -1,5 +1,17 @@
 """Fetch active Redfin listings for a list of ZIP codes.
 
+NOTICE — please read before running:
+  This module talks to Redfin's `gis-csv` endpoint, which is undocumented and
+  not part of any public API. Running it is YOUR responsibility, not the
+  author's. By executing this code you agree that you have:
+    - reviewed Redfin's Terms of Service and robots.txt
+    - decided that personal/research use of this scraper is acceptable in your
+      jurisdiction
+    - configured a moderate request rate (defaults to REDFIN_SLEEP=1.5s
+      between requests in config.py — do not lower without good reason)
+  This code is provided as-is, for educational and personal-research use. It
+  is not affiliated with or endorsed by Redfin.
+
 Strategy (the autocomplete endpoint is CloudFront-blocked, so we go around it):
   1. Warm up a Session by GET https://www.redfin.com/                  (sets cookies)
   2. GET https://www.redfin.com/zipcode/<zip>                          (sets more cookies, returns HTML)

@@ -57,8 +57,24 @@ Larger / volatile caches are gitignored and regenerated on demand:
 
 Reference cities for distance columns are hard-coded in `corridor_pipeline_v4.py` (`ADDISON`, `LEWISVILLE`) and `build_map.py` — change those if you're not commuting between Addison and Lewisville.
 
-## Caveats
+## Sample data freshness
 
-- **Redfin's GIS endpoint is undocumented.** The scraper uses browser-style headers and respects a 1.5s sleep between requests, but it is not an official API. Don't run it in tight loops; expect occasional breakage if Redfin changes their endpoint.
+The committed `output/filtered_listings_v4.csv` and `output/listings_map.html` are a **snapshot from 2026-04-30** of public Redfin for-sale listings inside the corridor. Listings turn over constantly, so by the time you read this most rows will be off-market. The snapshot exists so `build_map.py` and `analyze_v4.py` are runnable out of the box; for live data, re-run `corridor_pipeline_v4.py` (and read the next section first).
+
+## Acceptable use & TOS notice
+
+`corridor_pipeline_v4.py`, `fetch_redfin.py`, and `redfin_poly.py` talk to Redfin's `gis-csv` endpoint, which is undocumented and not part of any public API. This project is **not affiliated with or endorsed by Redfin**. The scraping code is provided for **personal and educational research** only.
+
+If you choose to run it:
+
+- Read [Redfin's Terms of Service](https://www.redfin.com/about/terms-of-use) and `https://www.redfin.com/robots.txt` first. Confirm that personal-research scraping is acceptable in your jurisdiction.
+- Keep `REDFIN_SLEEP` at the default (1.5s/request) or higher. Do not parallelize the requests. The pipeline prints a 3-second warning on startup so you have a chance to abort.
+- The endpoint can change at any time. The scraper may stop working without notice.
+- You are responsible for what you do with the output. Don't redistribute scraped listings as a service or repackage them commercially.
+
+If any of that doesn't sit right with you, just don't run the scraper — `build_map.py` and `analyze_v4.py` work fine off the committed snapshot.
+
+## Other caveats
+
 - **TSAHC eligibility is more than just a polygon.** Being inside a Targeted Area is necessary but not sufficient — income limits, purchase-price limits, and program-specific rules apply. Always confirm with a TSAHC-approved lender before relying on eligibility.
 - **CSV schema** is documented in `corridor_pipeline_v4.py` (the `fields` list at the bottom of `main()`).

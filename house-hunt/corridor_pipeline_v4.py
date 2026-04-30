@@ -1,5 +1,10 @@
 """Pipeline v4 -- bbox + TSAHC polygons, NO year filter, ALL property types.
 
+NOTICE: This pipeline scrapes Redfin's undocumented gis-csv endpoint via
+fetch_redfin / redfin_poly. Read the NOTICE block in fetch_redfin.py before
+running. Personal/research use only; respect the upstream service's TOS and
+robots.txt; keep REDFIN_SLEEP at default (1.5s) or higher.
+
 Output: filtered_listings_v4.csv -- everything actively for sale inside a
 TSAHC-Targeted polygon within the commute bbox, sorted by average distance
 to Addison + Lewisville (closer = higher).
@@ -79,6 +84,12 @@ def main():
     print(f"Bbox: lat [{CORRIDOR_LAT_MIN}, {CORRIDOR_LAT_MAX}]  "
           f"lng [{CORRIDOR_LNG_MIN}, {CORRIDOR_LNG_MAX}]")
     print("=" * 76)
+    print("NOTE: This will hit Redfin's undocumented gis-csv endpoint. By running")
+    print("      this you accept responsibility for compliance with Redfin's TOS")
+    print("      and robots.txt. Default rate is 1.5s/request; do not lower.")
+    print("      Press Ctrl+C in the next 3 seconds to abort.")
+    print("=" * 76)
+    time.sleep(3)
 
     # 1. Load + filter polygons
     gj = json.loads(GEOJSON.read_text())

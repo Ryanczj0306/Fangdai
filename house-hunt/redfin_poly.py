@@ -1,4 +1,9 @@
-"""Redfin gis-csv search by polygon. Reuses session warmup from fetch_redfin."""
+"""Redfin gis-csv search by polygon. Reuses session warmup from fetch_redfin.
+
+See the NOTICE at the top of fetch_redfin.py before running. Same caveats
+apply: this hits an undocumented endpoint, you own the decision to use it,
+keep request rates moderate.
+"""
 from __future__ import annotations
 
 import json
