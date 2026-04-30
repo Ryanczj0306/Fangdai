@@ -1,110 +1,83 @@
-# Buy vs Rent Investment Calculator
+# Fangdai — Buy vs Rent + DFW house-hunt toolkit
 
-A lightweight single-page calculator for comparing:
+Two related tools for thinking through buying a home in the Dallas / Fort Worth area:
 
-- **Buying a home** (mortgage amortization, tax/fees, sale proceeds)
-- **Renting + investing** (monthly cash-flow differences invested in stocks)
+1. **Buy vs Rent investment calculator** — bilingual (中文 / English) single-page web app, plus a Python CLI of the same model. Texas-style inputs (homestead exemption, MCC, builder/FTHB credits, PMI). Compares mortgage amortization + sale proceeds against rent + invest-the-difference in stocks.
+2. **`house-hunt/`** — a scripted Redfin scraper + interactive Folium map of active listings inside [TSAHC](https://www.tsahc.org/) Targeted Areas within a configurable DFW commute corridor.
 
-It supports bilingual UI (**中文 / English**) and is designed for Texas-style scenarios (property tax, homestead exemption, MCC, builder/FTHB credits).
+## Buy vs Rent calculator
 
-## Try it out!!! https://ryanczj0306.github.io/Fangdai/
-## Features
+**Web (no install):** [https://ryanczj0306.github.io/Fangdai/](https://ryanczj0306.github.io/Fangdai/)
 
-- Interactive input panel (home price, down payment, APR, tax/fees, rent, stock return, home appreciation)
-- Optional **loan credit** (e.g., builder/FTHB incentive reducing principal)
-- Optional **extra monthly payment** (pay off early)
-- Optional **down payment paid by credits** (exclude from renter investable cash)
-- 1-30 year horizon slider
-- Charts and milestone tables
-- Sell-at-year-N P&L breakdown table
-- Bilingual toggle button (top-right)
+Or open [`index.html`](./index.html) directly in your browser.
 
-## Quick Start
-
-No build tools required.
-
-1. Clone or download this repo
-2. Open `index.html` directly in your browser
+**CLI:** see [`cli/`](./cli/). Pure Python 3.10+, no dependencies.
 
 ```bash
-open index.html
+python cli/fangdai.py                                # default Texas-style scenario
+python cli/fangdai.py --home-price 500000 --apr 6.5  # override any input
+python cli/fangdai.py --lang zh --full               # Chinese, full 30-year table
+python cli/fangdai.py --json > scenario.json         # machine-readable output
 ```
 
-You can also serve it locally (optional):
+Both versions use the same model (mortgage amortized monthly, MCC adjusts deductible interest, PMI dropped at 80% LTV, sale assumes 7% selling cost). See [`cli/README.md`](./cli/README.md) for all flags.
+
+### Defaults (current scenario)
+
+| Input | Value | | Input | Value |
+| --- | --- | --- | --- | --- |
+| Home price | `400000` | | Property tax | `2.2%` |
+| Down payment | `5%` | | Homestead exemption | `140000` |
+| Loan credit | `5%` | | HOA | `400/month` |
+| APR | `5.0%` | | Insurance | `4800/year` |
+| Loan term | `30 years` | | Maintenance | `3500/year` |
+| Extra monthly | `3500` | | Tax rate | `20%` |
+| Down paid by credits | `yes` | | MCC | `15%` |
+| Rent | `2000/month` | | Rent growth | `3%` |
+| Stock return | `8%` | | Home appreciation | `4%` |
+| Horizon | `20 years` | | | |
+
+### Model notes
+
+- Monthly amortization: `interest = remaining_principal × monthly_rate`.
+- PMI applies until equity (down payment + cumulative principal) ≥ 20% of home price.
+- MCC reduces the deductible portion of interest before the federal deduction.
+- Tax savings = `(interest_after_mcc + property_tax) × marginal_rate`.
+- After payoff: only holding costs remain. If rent exceeds holding cost, the difference is invested by the buyer.
+- Sale assumes 7% selling cost.
+
+## DFW house-hunt tool
+
+See [`house-hunt/README.md`](./house-hunt/README.md). Scoped to DFW + TSAHC Targeted Areas. Ships with a sample CSV and pre-built interactive map; refreshing requires hitting Redfin's (undocumented) GIS endpoint.
 
 ```bash
-python3 -m http.server 8080
-# then open http://localhost:8080
+cd house-hunt
+pip install -r requirements.txt
+python build_map.py        # regenerate the map from the committed sample CSV
+open output/listings_map.html
 ```
 
-## Deploy to GitHub Pages
+## Repo layout
 
-### Option A: Deploy root as static site
+```
+Fangdai/
+├── index.html              # web Buy vs Rent calculator
+├── cli/
+│   ├── fangdai.py          # Python CLI mirror of the web calculator
+│   └── README.md
+└── house-hunt/             # DFW listings → TSAHC targeted-area map
+    ├── corridor_pipeline_v4.py
+    ├── analyze_v4.py
+    ├── build_map.py
+    ├── tsahc_official.py
+    ├── data/               # cached TSAHC polygons + tract→city map
+    └── output/             # sample CSV + pre-built map
+```
 
-1. Push repository to GitHub
-2. Go to **Settings -> Pages**
-3. Under **Build and deployment**:
-   - Source: `Deploy from a branch`
-   - Branch: `main` (or your default), folder: `/ (root)`
-4. Save and wait for deployment
+## Deploying the web calculator to GitHub Pages
 
-Your site URL will appear in the Pages section.
+The web calculator is a single file at the repo root. Settings → Pages → deploy from `main` branch, folder `/ (root)`.
 
-### Option B: Use `/docs`
+## License / disclaimer
 
-If you prefer Pages from `/docs`:
-
-1. Move `index.html` into `docs/`
-2. In **Settings -> Pages**, set folder to `/docs`
-
-## Input Defaults (Current)
-
-The app is initialized with the values from the latest user scenario:
-
-- Home price: `400000`
-- Down payment: `5%`
-- Loan credit: `5%`
-- APR: `5.0%`
-- Loan term: `30 years`
-- Extra monthly payment: `3500`
-- Down payment paid by credits: `checked`
-- Property tax: `2.2%`
-- Homestead exemption: `140000`
-- HOA: `400/month`
-- Insurance: `4800/year`
-- Maintenance: `3500/year`
-- Tax rate: `20%`
-- MCC: `2000/year`
-- Rent: `2000/month`
-- Rent growth: `3%`
-- Stock return: `8%`
-- Home appreciation: `4%`
-- Horizon slider: `20 years`
-
-## Model Notes
-
-- Mortgage is amortized monthly.
-- Monthly interest is computed as:
-  - `interest = remaining_principal * monthly_rate`
-- Sale proceeds assume a **7% selling cost**.
-- Tax benefit includes:
-  - MCC credit
-  - deductible mortgage interest (after MCC adjustment)
-  - deductible property tax
-- With early payoff:
-  - no further mortgage payment/interest
-  - only holding costs remain (property tax, HOA, insurance, maintenance)
-- Post-payoff logic supports allocating rent-vs-holding-cost difference to buyer-side investing (as implemented in current version).
-
-## Customize
-
-Everything is in a single file:
-
-- `index.html`
-
-You can modify:
-
-- Defaults in the input elements
-- Text labels and translations
-- Financial assumptions and formula details in script section
-
+This is a personal house-hunt toolkit. The Buy vs Rent calculator is a planning aid, not financial advice — verify any scenario against your lender's actual numbers. The Redfin scraping in `house-hunt/` uses an undocumented endpoint at moderate rate; use at your own risk and respect Redfin's terms of service.

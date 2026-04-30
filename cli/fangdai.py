@@ -1,0 +1,529 @@
+#!/usr/bin/env python3
+"""Fangdai CLI — Buy vs Rent investment calculator.
+
+Mirrors the calculation in index.html so terminal output matches the web app.
+
+Run with the README's default scenario:
+
+    python fangdai.py
+
+Override any input from the command line:
+
+    python fangdai.py --home-price 500000 --down-pct 20 --apr 6.5 --horizon 15
+
+JSON output (for scripts/dashboards):
+
+    python fangdai.py --json
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from dataclasses import dataclass, asdict, field
+from typing import Optional
+
+
+# -------- inputs --------
+@dataclass
+class Inputs:
+    home_price: float = 400_000
+    down_pct: float = 5.0          # >= 3
+    loan_credit_pct: float = 5.0   # 0-100
+    down_pay_by_credit: bool = True
+    apr: float = 5.0
+    loan_years: int = 30
+    extra_pay: float = 3_500       # custom monthly payment (>= mp_min); 0 disables
+    prop_tax_pct: float = 2.2
+    homestead: float = 140_000
+    hoa: float = 400               # $/mo
+    pmi: float = 315               # $/mo when LTV < 80%
+    insurance: float = 4_800       # $/yr
+    maintenance: float = 3_500     # $/yr
+    tax_rate_pct: float = 20.0     # marginal federal
+    mcc_pct: float = 15.0          # MCC certificate rate
+    rent: float = 2_000            # $/mo, year 1
+    rent_growth_pct: float = 3.0
+    stock_return_pct: float = 8.0
+    house_return_pct: float = 4.0
+    horizon: int = 20              # 1..30
+    lang: str = "en"               # zh|en
+
+    def normalize(self) -> "Inputs":
+        self.down_pct = max(3.0, self.down_pct)
+        self.pmi = max(0.0, self.pmi)
+        self.mcc_pct = max(0.0, min(100.0, self.mcc_pct))
+        self.loan_credit_pct = max(0.0, min(100.0, self.loan_credit_pct))
+        self.horizon = max(1, min(30, self.horizon))
+        return self
+
+
+# -------- per-year output --------
+@dataclass
+class YearRow:
+    y: int
+    home_value: float
+    loan_balance: float
+    sale_proceeds: float           # 93% of home value
+    buyer_after_sale: float        # cash + buyerStk
+    renter_value: float            # stk
+    advantage: float               # buyer_after_sale - renter_value
+    y_principal: float
+    y_interest: float
+    y_property_tax: float
+    y_other: float                 # HOA + ins + mnt + PMI
+    y_mcc: float
+    y_tax_deduction_savings: float
+    y_benefit: float
+    y_net_cost: float              # int + PT + other - benefit
+    y_rent_total: float
+    cum_principal: float
+    cum_interest: float
+    cum_property_tax: float
+    cum_other: float
+    cum_mcc: float
+    cum_tax_dedn: float
+    cum_benefit: float
+    cum_net_cost: float
+    cum_rent: float
+    cum_invested_renter: float
+    cum_invested_buyer: float
+    renter_stk: float              # stk
+    buyer_stk: float
+
+
+@dataclass
+class Result:
+    inputs: dict
+    monthly_payment: float
+    monthly_payment_min: float
+    down_payment: float
+    loan: float
+    credit_amount: float
+    renter_initial: float
+    payoff_year: Optional[int]
+    breakeven_year: Optional[int]
+    years: list[YearRow] = field(default_factory=list)
+
+
+# -------- core calculation (mirrors index.html calculate()) --------
+def compute(I: Inputs) -> Result:
+    I = I.normalize()
+    total_down_pct = max(3.0, I.down_pct)
+    down_pay = I.home_price * total_down_pct / 100.0
+    loan = max(0.0, I.home_price - down_pay)
+    credit_amount = I.home_price * min(I.loan_credit_pct, total_down_pct) / 100.0
+    renter_initial = (
+        I.home_price * max(0.0, total_down_pct / 100.0 - I.loan_credit_pct / 100.0)
+        if I.down_pay_by_credit else down_pay
+    )
+
+    mr = I.apr / 100.0 / 12.0
+    np_months = I.loan_years * 12
+
+    if loan > 0 and mr > 0:
+        p = (1 + mr) ** np_months
+        mp_min = loan * mr * p / (p - 1)
+    elif loan > 0:
+        mp_min = loan / np_months
+    else:
+        mp_min = 0.0
+
+    mp = I.extra_pay if (I.extra_pay > 0 and I.extra_pay >= mp_min) else mp_min
+
+    smr = (1 + I.stock_return_pct / 100.0) ** (1.0 / 12.0) - 1.0
+    tx_r = I.tax_rate_pct / 100.0
+    mcc_rate = I.mcc_pct / 100.0
+
+    bal = loan
+    stk = renter_initial
+    buyer_stk = 0.0
+    cP = cInt = cPT = cOth = cMCC = cTxDed = cRent = 0.0
+    c_invested = renter_initial
+    c_buyer_invested = 0.0
+    cum_prin = 0.0
+    years: list[YearRow] = []
+
+    for y in range(1, 31):
+        hvs = I.home_price * (1 + I.house_return_pct / 100.0) ** (y - 1)
+        hve = I.home_price * (1 + I.house_return_pct / 100.0) ** y
+        taxable = max(0.0, hvs - I.homestead)
+        y_pt = taxable * I.prop_tax_pct / 100.0
+        m_pt = y_pt / 12.0
+        cur_rent = I.rent * (1 + I.rent_growth_pct / 100.0) ** (y - 1)
+        y_rent = cur_rent * 12.0
+
+        y_int = y_prin = y_mcc = y_tx_ded = y_pmi = 0.0
+
+        for _ in range(12):
+            m_pay = m_int = m_prin = 0.0
+            if bal > 0.01:
+                m_int = bal * mr
+                pay_this_month = min(mp, bal + m_int)
+                m_prin = min(pay_this_month - m_int, bal)
+                m_pay = m_int + m_prin
+                bal = max(0.0, bal - m_prin)
+                cum_prin += m_prin
+            y_int += m_int
+            y_prin += m_prin
+
+            pmi = I.pmi if (down_pay + cum_prin < 0.2 * I.home_price) else 0.0
+            y_pmi += pmi
+
+            m_mcc = m_int * mcc_rate
+            ded_int = max(0.0, m_int - m_mcc)
+            tx_ded_save = (ded_int + m_pt) * tx_r
+            y_mcc += m_mcc
+            y_tx_ded += tx_ded_save
+            benefit = m_mcc + tx_ded_save
+
+            total_buy = m_pay + m_pt + I.hoa + I.insurance / 12.0 + I.maintenance / 12.0 + pmi
+            net_buy = total_buy - benefit
+
+            stk *= (1 + smr)
+            buyer_stk *= (1 + smr)
+
+            if m_pay > 0:
+                diff = net_buy - cur_rent
+                c_invested += diff
+                stk += diff
+            else:
+                buyer_diff = max(0.0, cur_rent - net_buy)
+                c_buyer_invested += buyer_diff
+                buyer_stk += buyer_diff
+
+        y_other = I.hoa * 12 + I.insurance + I.maintenance + y_pmi
+        cP += y_prin
+        cInt += y_int
+        cPT += y_pt
+        cOth += y_other
+        cMCC += y_mcc
+        cTxDed += y_tx_ded
+        cRent += y_rent
+        y_benefit = y_mcc + y_tx_ded
+        c_benefit = cMCC + cTxDed
+        y_net_cost = y_int + y_pt + y_other - y_benefit
+        c_net_cost = cInt + cPT + cOth - c_benefit
+
+        sale = hve * 0.93
+        bw = sale - max(0.0, bal)
+        bt = bw + buyer_stk
+        adv = bt - stk
+
+        years.append(YearRow(
+            y=y,
+            home_value=hve,
+            loan_balance=max(0.0, bal),
+            sale_proceeds=sale,
+            buyer_after_sale=bt,
+            renter_value=stk,
+            advantage=adv,
+            y_principal=y_prin,
+            y_interest=y_int,
+            y_property_tax=y_pt,
+            y_other=y_other,
+            y_mcc=y_mcc,
+            y_tax_deduction_savings=y_tx_ded,
+            y_benefit=y_benefit,
+            y_net_cost=y_net_cost,
+            y_rent_total=y_rent,
+            cum_principal=cP,
+            cum_interest=cInt,
+            cum_property_tax=cPT,
+            cum_other=cOth,
+            cum_mcc=cMCC,
+            cum_tax_dedn=cTxDed,
+            cum_benefit=c_benefit,
+            cum_net_cost=c_net_cost,
+            cum_rent=cRent,
+            cum_invested_renter=c_invested,
+            cum_invested_buyer=c_buyer_invested,
+            renter_stk=stk,
+            buyer_stk=buyer_stk,
+        ))
+
+    # Independent payoff year (un-affected by bal mutations above)
+    payoff_year: Optional[int] = None
+    if loan > 0:
+        b = loan
+        mo = 0
+        while b > 0.01 and mo < 360:
+            m_int_p = b * mr
+            pay_p = min(mp, b + m_int_p)
+            m_prin_p = min(pay_p - m_int_p, b)
+            b -= m_prin_p
+            mo += 1
+        payoff_year = -(-mo // 12)  # ceil
+
+    breakeven_year: Optional[int] = next((r.y for r in years if r.advantage >= 0), None)
+
+    return Result(
+        inputs=asdict(I),
+        monthly_payment=mp,
+        monthly_payment_min=mp_min,
+        down_payment=down_pay,
+        loan=loan,
+        credit_amount=credit_amount,
+        renter_initial=renter_initial,
+        payoff_year=payoff_year,
+        breakeven_year=breakeven_year,
+        years=years,
+    )
+
+
+# -------- formatting --------
+def _fmt_money(x: float) -> str:
+    sign = "-" if x < 0 else ""
+    x = abs(x)
+    return f"{sign}${x:,.0f}"
+
+
+def _T(zh: str, en: str, lang: str) -> str:
+    return zh if lang == "zh" else en
+
+
+def render_text(r: Result, full_table: bool = False) -> str:
+    I = r.inputs
+    lang = I.get("lang", "en")
+    py = I["horizon"]
+    s = r.years[py - 1]
+    y1 = r.years[0]
+
+    eff_rate_pct = (y1.y_property_tax / I["home_price"] * 100) if I["home_price"] else 0.0
+    sale_fee = s.home_value * 0.07
+    sale_income = s.home_value - sale_fee
+    cash_after_sale = sale_income - s.loan_balance
+    buyer_total_asset = cash_after_sale + s.buyer_stk
+
+    lines: list[str] = []
+    lines.append("=" * 72)
+    lines.append(_T("Fangdai 房贷买房 vs 租房+投资 计算器", "Fangdai — Buy vs Rent + Invest Calculator", lang))
+    lines.append("=" * 72)
+    lines.append(_T(
+        f"房价 {_fmt_money(I['home_price'])} · 首付 {I['down_pct']:.1f}%"
+        f" · 贷款 {_fmt_money(r.loan)} · APR {I['apr']:.2f}% · {I['loan_years']}年",
+        f"Price {_fmt_money(I['home_price'])} · Down {I['down_pct']:.1f}%"
+        f" · Loan {_fmt_money(r.loan)} · APR {I['apr']:.2f}% · {I['loan_years']}y",
+        lang,
+    ))
+    if r.credit_amount > 0:
+        lines.append(_T(
+            f"  贷款 credit: {_fmt_money(r.credit_amount)}"
+            + ("（首付由 credits 抵扣）" if I["down_pay_by_credit"] else ""),
+            f"  Loan credit: {_fmt_money(r.credit_amount)}"
+            + (" (down paid via credits)" if I["down_pay_by_credit"] else ""),
+            lang,
+        ))
+    lines.append("")
+
+    custom_pay = I["extra_pay"] > 0 and I["extra_pay"] >= r.monthly_payment_min
+    payoff_str = (
+        _T(f"约 {r.payoff_year} 年还清", f"payoff in ~{r.payoff_year}y", lang)
+        if r.payoff_year is not None else "—"
+    )
+    pay_label = _T("实际月供" if custom_pay else "标准月供",
+                   "Actual payment" if custom_pay else "Standard payment", lang)
+    lines.append(f"{pay_label}: {_fmt_money(r.monthly_payment)} "
+                 f"({_T('最低', 'min', lang)} {_fmt_money(r.monthly_payment_min)} · {payoff_str})")
+
+    if r.breakeven_year is not None:
+        lines.append(_T(
+            f"盈亏平衡: 第 {r.breakeven_year} 年（买房开始优于租房+投资）",
+            f"Breakeven: Year {r.breakeven_year} (buying overtakes renting+investing)",
+            lang,
+        ))
+    else:
+        lines.append(_T(
+            "盈亏平衡: 30 年内未达成",
+            "Breakeven: not reached within 30 years",
+            lang,
+        ))
+
+    lines.append(_T(
+        f"实际房产税率（年1）: {eff_rate_pct:.2f}% （减免后 {_fmt_money(y1.y_property_tax)}/年）",
+        f"Effective property tax (yr 1): {eff_rate_pct:.2f}% (after exemption {_fmt_money(y1.y_property_tax)}/yr)",
+        lang,
+    ))
+    lines.append("")
+    lines.append("-" * 72)
+    lines.append(_T(
+        f"住 {py} 年累计 / 卖房盈亏",
+        f"Cumulative after {py} years / sale P&L",
+        lang,
+    ))
+    lines.append("-" * 72)
+
+    # Buying side
+    stock_gain = s.renter_stk - s.cum_invested_renter
+    buyer_stock_gain = s.buyer_stk - s.cum_invested_buyer
+
+    rows = [
+        (_T("还贷本金（→ 权益）", "Principal paid (equity)", lang), _fmt_money(s.cum_principal)),
+        (_T("贷款利息", "Mortgage interest", lang), _fmt_money(s.cum_interest)),
+        (_T("房产税（减免后）", "Property tax (after exemption)", lang), _fmt_money(s.cum_property_tax)),
+        (_T("HOA + PMI + 保险 + 维修", "HOA + PMI + Ins + Maint", lang), _fmt_money(s.cum_other)),
+        (_T("MCC 抵免（credit）", "MCC tax credit", lang), "-" + _fmt_money(s.cum_mcc).lstrip("-")),
+        (_T("利息+房产税抵扣 (deduction)", "Interest + prop-tax deduction", lang),
+            "-" + _fmt_money(s.cum_tax_dedn).lstrip("-")),
+        (_T("还清后买房方差额累计投入", "Buyer post-payoff diff invested", lang),
+            _fmt_money(s.cum_invested_buyer)),
+        (_T("买房方差额投资收益", "Buyer diff investment gain", lang), _fmt_money(buyer_stock_gain)),
+        (_T("买房方差额投资净值", "Buyer diff investment value", lang), _fmt_money(s.buyer_stk)),
+        (_T("净成本（不含还本金）", "Net cost (excl. principal)", lang), _fmt_money(s.cum_net_cost)),
+    ]
+    lines.append(_T("买房 N 年累计:", "Buying — cumulative:", lang))
+    for k, v in rows:
+        lines.append(f"  {k:<46s} {v:>16s}")
+    lines.append("")
+
+    lines.append(_T("租房 + 投资 N 年:", "Renting + investing:", lang))
+    rent_rows = [
+        (_T(f"{py} 年累计租金", f"{py}-yr total rent", lang), _fmt_money(s.cum_rent)),
+        (_T("买房净成本比租房多花", "Buy-net-cost minus rent", lang), _fmt_money(s.cum_net_cost - s.cum_rent)),
+        (_T("初始投入股市（首付 / 自付部分）",
+             "Initial investment (down / out-of-pocket)", lang), _fmt_money(r.renter_initial)),
+        (_T("每月差额累计投入", "Cumulative monthly diff invested", lang),
+            _fmt_money(s.cum_invested_renter - r.renter_initial)),
+        (_T(f"股市投资收益 ({I['stock_return_pct']:.1f}%/yr)",
+             f"Stock gain ({I['stock_return_pct']:.1f}%/yr)", lang), _fmt_money(stock_gain)),
+        (_T("股市投资总值", "Stock portfolio value", lang), _fmt_money(s.renter_stk)),
+    ]
+    for k, v in rent_rows:
+        lines.append(f"  {k:<46s} {v:>16s}")
+    lines.append("")
+
+    lines.append(_T("卖房盈亏（按 7% 交易费）:", "Sell P&L (7% selling cost):", lang))
+    sell_rows = [
+        (_T(f"房屋市值（第 {py} 年末）", f"Home value (end of yr {py})", lang), _fmt_money(s.home_value)),
+        (_T("− 卖房交易费用 (7%)", "− Selling cost (7%)", lang), "-" + _fmt_money(sale_fee).lstrip("-")),
+        (_T("= 卖房收入", "= Sale proceeds", lang), _fmt_money(sale_income)),
+        (_T("− 剩余贷款余额", "− Remaining loan balance", lang), "-" + _fmt_money(s.loan_balance).lstrip("-")),
+        (_T("= 卖房现金到手", "= Cash after sale", lang), _fmt_money(cash_after_sale)),
+        (_T("+ 买房方投资净值", "+ Buyer investment value", lang), _fmt_money(s.buyer_stk)),
+        (_T("= 买房方总净值 (A)", "= Buyer total net asset (A)", lang), _fmt_money(buyer_total_asset)),
+        (_T("租房+投资净值 (B)", "Renter net value (B)", lang), _fmt_money(s.renter_stk)),
+        (_T("买房盈亏 = A − B", "Buy P&L = A − B", lang), _fmt_money(s.advantage)),
+    ]
+    for k, v in sell_rows:
+        lines.append(f"  {k:<46s} {v:>16s}")
+    lines.append("")
+
+    # Year-by-year table
+    lines.append("-" * 72)
+    lines.append(_T("逐年 (1-30):", "Year-by-year (1-30):", lang))
+    lines.append("-" * 72)
+    if not full_table:
+        # show 1, 2, 3, 5, 10, 15, 20, 25, 30 + horizon
+        keep = sorted({1, 2, 3, 5, 10, 15, 20, 25, 30, py})
+        rows_show = [r.years[i - 1] for i in keep]
+    else:
+        rows_show = r.years
+
+    hdr = (
+        f"{'yr':>3s} {_T('房价','home',lang):>10s} {_T('贷款余额','balance',lang):>11s}"
+        f" {_T('卖房现金','cash',lang):>10s} {_T('买房A','buyer A',lang):>11s}"
+        f" {_T('租房B','renter B',lang):>11s} {_T('A-B','A-B',lang):>10s}"
+    )
+    lines.append(hdr)
+    for yr in rows_show:
+        sale_fee_y = yr.home_value * 0.07
+        cash_y = yr.home_value - sale_fee_y - yr.loan_balance
+        a = cash_y + yr.buyer_stk
+        b = yr.renter_value
+        marker = " *" if yr.y == py else ""
+        lines.append(
+            f"{yr.y:>3d} {_fmt_money(yr.home_value):>10s} "
+            f"{_fmt_money(yr.loan_balance):>11s} {_fmt_money(cash_y):>10s} "
+            f"{_fmt_money(a):>11s} {_fmt_money(b):>11s} {_fmt_money(a - b):>10s}{marker}"
+        )
+
+    lines.append("")
+    lines.append(_T(
+        "* 标记的年份是你设定的居住年限。",
+        "* marks your selected horizon.",
+        lang,
+    ))
+    return "\n".join(lines)
+
+
+# -------- CLI --------
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        description="Fangdai CLI — Buy vs Rent investment calculator (mirror of index.html).",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    d = Inputs()
+    p.add_argument("--home-price",          type=float, default=d.home_price)
+    p.add_argument("--down-pct",            type=float, default=d.down_pct, help="Down payment percent (>=3)")
+    p.add_argument("--loan-credit-pct",     type=float, default=d.loan_credit_pct, help="Loan credit percent (FTHB/builder)")
+    p.add_argument("--down-pay-by-credit",  action=argparse.BooleanOptionalAction, default=d.down_pay_by_credit)
+    p.add_argument("--apr",                 type=float, default=d.apr)
+    p.add_argument("--loan-years",          type=int,   default=d.loan_years)
+    p.add_argument("--extra-pay",           type=float, default=d.extra_pay, help="Custom monthly payment; 0 disables")
+    p.add_argument("--prop-tax-pct",        type=float, default=d.prop_tax_pct)
+    p.add_argument("--homestead",           type=float, default=d.homestead, help="Homestead exemption $")
+    p.add_argument("--hoa",                 type=float, default=d.hoa,       help="HOA $/mo")
+    p.add_argument("--pmi",                 type=float, default=d.pmi,       help="PMI $/mo while LTV<80%%")
+    p.add_argument("--insurance",           type=float, default=d.insurance, help="$/yr")
+    p.add_argument("--maintenance",         type=float, default=d.maintenance, help="$/yr")
+    p.add_argument("--tax-rate-pct",        type=float, default=d.tax_rate_pct, help="Marginal tax rate %%")
+    p.add_argument("--mcc-pct",             type=float, default=d.mcc_pct,   help="MCC certificate rate (0-100)")
+    p.add_argument("--rent",                type=float, default=d.rent,      help="$/mo, year 1")
+    p.add_argument("--rent-growth-pct",     type=float, default=d.rent_growth_pct)
+    p.add_argument("--stock-return-pct",    type=float, default=d.stock_return_pct)
+    p.add_argument("--house-return-pct",    type=float, default=d.house_return_pct)
+    p.add_argument("--horizon",             type=int,   default=d.horizon, help="Years 1..30")
+    p.add_argument("--lang",                choices=["zh", "en"], default=d.lang)
+    p.add_argument("--json",  dest="as_json", action="store_true", help="Emit machine-readable JSON")
+    p.add_argument("--full",  action="store_true", help="Print all 30 yearly rows in text mode")
+    return p
+
+
+def args_to_inputs(args: argparse.Namespace) -> Inputs:
+    return Inputs(
+        home_price=args.home_price,
+        down_pct=args.down_pct,
+        loan_credit_pct=args.loan_credit_pct,
+        down_pay_by_credit=args.down_pay_by_credit,
+        apr=args.apr,
+        loan_years=args.loan_years,
+        extra_pay=args.extra_pay,
+        prop_tax_pct=args.prop_tax_pct,
+        homestead=args.homestead,
+        hoa=args.hoa,
+        pmi=args.pmi,
+        insurance=args.insurance,
+        maintenance=args.maintenance,
+        tax_rate_pct=args.tax_rate_pct,
+        mcc_pct=args.mcc_pct,
+        rent=args.rent,
+        rent_growth_pct=args.rent_growth_pct,
+        stock_return_pct=args.stock_return_pct,
+        house_return_pct=args.house_return_pct,
+        horizon=args.horizon,
+        lang=args.lang,
+    )
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    # Windows consoles default to cp1252; force utf-8 so Chinese / unicode dashes work.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8")
+            except Exception:
+                pass
+    args = build_parser().parse_args(argv)
+    I = args_to_inputs(args)
+    r = compute(I)
+    if args.as_json:
+        out = asdict(r)
+        out["years"] = [asdict(y) for y in r.years]
+        print(json.dumps(out, indent=2))
+    else:
+        print(render_text(r, full_table=args.full))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

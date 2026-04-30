@@ -30,3 +30,19 @@ package-lock.json
 dist/
 build/
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# house-hunt local caches (large, machine-specific). Sample data is committed.
+house-hunt/data/raw_listings.json
+house-hunt/data/geocoded_listings.json
+house-hunt/data/geocode_cache.json
+house-hunt/data/tract_centroids.json
+house-hunt/data/tract_geometry_2020.json
+house-hunt/data/tsahc_arcgis_webmap.json
+
