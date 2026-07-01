@@ -62,8 +62,18 @@ class Inputs:
     lang: str = "en"               # zh|en
 
     def normalize(self) -> "Inputs":
+        self.home_price = max(0.0, self.home_price)
         self.down_pct = max(3.0, self.down_pct)
+        self.apr = max(0.0, self.apr)
+        self.loan_years = max(1, self.loan_years)
+        self.extra_pay = max(0.0, self.extra_pay)
+        self.prop_tax_pct = max(0.0, self.prop_tax_pct)
+        self.homestead = max(0.0, self.homestead)
+        self.hoa = max(0.0, self.hoa)
         self.pmi = max(0.0, self.pmi)
+        self.insurance = max(0.0, self.insurance)
+        self.maintenance = max(0.0, self.maintenance)
+        self.tax_rate_pct = max(0.0, min(100.0, self.tax_rate_pct))
         self.mcc_pct = max(0.0, min(100.0, self.mcc_pct))
         self.loan_credit_pct = max(0.0, min(100.0, self.loan_credit_pct))
         self.std_deduction = max(0.0, self.std_deduction)
@@ -73,7 +83,10 @@ class Inputs:
         self.closing_cost_pct = max(0.0, min(100.0, self.closing_cost_pct))
         self.ltcg_rate_pct = max(0.0, min(100.0, self.ltcg_rate_pct))
         self.sec121_cap = max(0.0, self.sec121_cap)
+        self.rent = max(0.0, self.rent)
         self.horizon = max(1, min(30, self.horizon))
+        # growth/return rates (rent_growth, stock, house, inflation) may
+        # legitimately be negative — not clamped.
         return self
 
 
@@ -161,7 +174,10 @@ def compute(I: Inputs) -> Result:
     else:
         mp_min = 0.0
 
-    mp = I.extra_pay if (I.extra_pay > 0 and I.extra_pay >= mp_min) else mp_min
+    if loan <= 0:
+        mp = 0.0  # all-cash: no mortgage payment exists
+    else:
+        mp = I.extra_pay if (I.extra_pay > 0 and I.extra_pay >= mp_min) else mp_min
 
     smr = (1 + I.stock_return_pct / 100.0) ** (1.0 / 12.0) - 1.0
     tx_r = I.tax_rate_pct / 100.0
@@ -217,7 +233,10 @@ def compute(I: Inputs) -> Result:
         salt_ded = min(y_pt, I.salt_cap)
         y_itemized = ded_int + salt_ded + I.charity
         std_y = I.std_deduction * infl
-        y_baseline = std_y + min(I.charity, CHARITY_ATL_CAP)
+        # Baseline = what the same taxpayer deducts WITHOUT the house: the
+        # better of (standard deduction + non-itemizer charity) and itemizing
+        # the charity alone — a big giver itemizes even without buying.
+        y_baseline = max(std_y + min(I.charity, CHARITY_ATL_CAP), I.charity)
         itemizing = y_itemized > y_baseline
         y_tx_ded = max(0.0, y_itemized - y_baseline) * tx_r
         m_benefit = (y_mcc + y_tx_ded) / 12.0  # smoothed into monthly cash flow
@@ -239,14 +258,19 @@ def compute(I: Inputs) -> Result:
             stk *= (1 + smr)
             buyer_stk *= (1 + smr)
 
-            if m_pay > 0:
-                diff = net_buy - cur_rent
+            # Whoever pays less for housing this month invests the difference:
+            # positive diff (owning costs more) -> the renter invests it;
+            # negative diff (renting costs more) -> the buyer invests it.
+            # One rule for all regimes (mortgage active, post-payoff, all-cash)
+            # keeps both portfolios non-negative, keeps the verdict sensitive
+            # to rent after payoff, and taxes each side's own gains at exit.
+            diff = net_buy - cur_rent
+            if diff >= 0:
                 c_invested += diff
                 stk += diff
             else:
-                buyer_diff = max(0.0, cur_rent - net_buy)
-                c_buyer_invested += buyer_diff
-                buyer_stk += buyer_diff
+                c_buyer_invested += -diff
+                buyer_stk += -diff
 
         y_other = hoa_m * 12 + ins_y + mnt_y + y_pmi
         cP += y_prin
@@ -327,13 +351,14 @@ def compute(I: Inputs) -> Result:
     if loan > 0:
         b = loan
         mo = 0
-        while b > 0.01 and mo < 360:
+        max_mo = np_months + 12  # cover the full term, not a hardcoded 30y
+        while b > 0.01 and mo < max_mo:
             m_int_p = b * mr
             pay_p = min(mp, b + m_int_p)
             m_prin_p = min(pay_p - m_int_p, b)
             b -= m_prin_p
             mo += 1
-        payoff_year = -(-mo // 12)  # ceil
+        payoff_year = -(-mo // 12) if b <= 0.01 else None  # ceil; None if never paid
 
     breakeven_year: Optional[int] = next((r.y for r in years if r.advantage >= 0), None)
     breakeven_year_after_tax: Optional[int] = next(
@@ -484,7 +509,7 @@ def render_text(r: Result, full_table: bool = False, after_tax: bool = False) ->
         (_T("MCC 抵免（credit）", "MCC tax credit", lang), "-" + _fmt_money(s.cum_mcc).lstrip("-")),
         (_T("逐项扣除超出标准部分的抵税", "Itemized-over-standard tax savings", lang),
             "-" + _fmt_money(s.cum_tax_dedn).lstrip("-")),
-        (_T("还清后买房方差额累计投入", "Buyer post-payoff diff invested", lang),
+        (_T("买房方差额累计投入", "Buyer diff invested", lang),
             _fmt_money(s.cum_invested_buyer)),
         (_T("买房方差额投资收益", "Buyer diff investment gain", lang), _fmt_money(buyer_stock_gain)),
         (_T("买房方差额投资净值", "Buyer diff investment value", lang), _fmt_money(s.buyer_stk)),

@@ -67,9 +67,17 @@ YEAR_MAP = [
     ("y_baseline_deduction", "yBaseline"), ("itemizing", "itemizing"),
     ("y_tax_deduction_savings", "yTxDed"), ("y_benefit", "yBenefit"),
     ("y_net_cost", "yNetCost"), ("y_rent_total", "yRent"),
+    ("cum_principal", "cP"), ("cum_interest", "cInt"),
+    ("cum_property_tax", "cPT"), ("cum_other", "cOth"),
+    ("cum_mcc", "cMCC"), ("cum_tax_dedn", "cTxDed"),
+    ("cum_benefit", "cBenefit"), ("cum_net_cost", "cNetCost"),
+    ("cum_rent", "cRent"),
     ("cum_invested_renter", "cInvested"), ("cum_invested_buyer", "cBuyerInvested"),
-    ("buyer_stk", "buyerStk"),
+    ("renter_stk", "stk"), ("buyer_stk", "buyerStk"),
 ]
+# JS-only render conveniences with no Python counterpart (derived 1:1 from
+# compared fields): bw = sale - bal, yExtra/cExtra = netCost - rent,
+# rent = y_rent_total / 12, and the ad[] amortization rows (display only).
 
 SCENARIOS: dict[str, dict] = {
     "defaults": {},
@@ -107,6 +115,18 @@ SCENARIOS: dict[str, dict] = {
                                 ltcg_rate_pct=15, sec121_cap=500_000),
     "no_exit_tax": dict(home_price=400_000, down_pct=20, apr=6.5, extra_pay=0,
                         ltcg_rate_pct=0),
+    "big_charity": dict(home_price=600_000, down_pct=25, apr=6.5, extra_pay=0,
+                        charity=100_000, tax_rate_pct=24),
+    "cheap_house_buyer_surplus": dict(home_price=120_000, down_pct=20, apr=5.0,
+                                      extra_pay=0, rent=2_500, hoa=0,
+                                      insurance=1_200, maintenance=800,
+                                      tax_rate_pct=24),
+    "clamped_inputs": dict(home_price=400_000, down_pct=1, apr=-2,
+                           loan_years=0, hoa=-100, insurance=-5_000,
+                           maintenance=-1_000, rent=-50, prop_tax_pct=-1,
+                           extra_pay=-200, tax_rate_pct=150),
+    "forty_year_loan": dict(home_price=400_000, down_pct=20, apr=6.5,
+                            loan_years=40, extra_pay=0),
 }
 
 
