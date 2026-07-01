@@ -160,6 +160,8 @@
         <h3>交易成本</h3>
         <div class="f"><label>卖房交易费率</label><div class="iw"><input id="sellCost" type="number" value="6" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
         <div class="f"><label>购房过户费率</label><div class="iw"><input id="closeCost" type="number" value="3" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>资本利得税率（退出）</label><div class="iw"><input id="ltcgRate" type="number" value="15" min="0" max="100" step="0.1" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>§121 主房免税上限</label><div class="iw"><input id="sec121Cap" type="number" value="500000" min="0" step="10000" class="hu"><span class="u">$</span></div></div>
       </div>
       <div class="ig">
         <h3>租房对比</h3>
@@ -270,7 +272,7 @@ const T = (zh, en) => currentLang === 'zh' ? zh : en;
 const SCENARIO_FIELD_IDS = [
   'homePrice','downPct','loanCredit','apr','loanYears','customPay','downPayByCredit',
   'propTax','homestead','hoa','pmi','insurance','maintenance','taxRate','mccPct',
-  'stdDed','saltCap','charity','inflation','sellCost','closeCost',
+  'stdDed','saltCap','charity','inflation','sellCost','closeCost','ltcgRate','sec121Cap',
   'rent','rentGrowth','stockReturn','houseReturn','planSlider'
 ];
 
@@ -290,14 +292,14 @@ function applyStaticI18n() {
     '房屋购买价格', '首付比例', '首付抵扣', '贷款年利率 (APR)', '贷款年限', '每月还款额（可多还）',
     '房产税率（年）', '自住房减免额', 'HOA 月费', 'PMI 月费（还本<20%时）', '房屋保险（年）', '房屋维修费（年）', '所得税率', 'MCC 比例（利息的%）',
     '标准扣除额（年）', 'SALT 抵扣上限（年）', '慈善捐款（年）', '通胀率（扣除额/持有成本涨幅）',
-    '卖房交易费率', '购房过户费率',
+    '卖房交易费率', '购房过户费率', '资本利得税率（退出）', '§121 主房免税上限',
     '每月租金', '租金年涨幅', '股市年回报率', '房市年增值率'
   ];
   const labelsEn = [
     'Home Price', 'Down Payment %', 'Credits', 'APR', 'Loan Term', 'Monthly Payment (Optional Extra)',
     'Property Tax Rate (Annual)', 'Homestead Exemption', 'HOA Monthly', 'PMI Monthly (when equity < 20%)', 'Home Insurance (Annual)', 'Maintenance (Annual)', 'Income Tax Rate', 'MCC Rate (% of interest)',
     'Standard Deduction (Annual)', 'SALT Cap (Annual)', 'Charity (Annual)', 'Inflation (deductions & costs)',
-    'Selling Cost %', 'Closing Cost %',
+    'Selling Cost %', 'Closing Cost %', 'LTCG Rate (at exit)', '§121 Exclusion Cap',
     'Monthly Rent', 'Rent Growth (Annual)', 'Stock Return (Annual)', 'Home Appreciation (Annual)'
   ];
   labels.forEach((el, i) => { if (labelsZh[i]) el.textContent = T(labelsZh[i], labelsEn[i]); });
@@ -441,6 +443,8 @@ function getI() {
     charity:Math.max(0, num('charity',0)), inflPct:num('inflation',2.5),
     sellCostPct:Math.max(0, Math.min(100, num('sellCost',6))),
     closeCostPct:Math.max(0, Math.min(100, num('closeCost',3))),
+    ltcgPct:Math.max(0, Math.min(100, num('ltcgRate',15))),
+    sec121Cap:Math.max(0, num('sec121Cap',500000)),
     rent:num('rent',0), rg:num('rentGrowth',0),
     sr:num('stockReturn',0), hr:num('houseReturn',0),
     py:Math.min(30,Math.max(1,num('planSlider',10))),
@@ -572,8 +576,24 @@ function computeModel(I) {
     const bt = bw + buyerStk;
     const adv = bt - stk;
 
+    // After-tax exit if both parties liquidate at end of year y: the buyer's
+    // primary-home gain is §121-exempt up to sec121Cap (2-of-5-years
+    // ownership+use, so no exclusion in year 1); stock gains on BOTH sides
+    // are taxed at the LTCG rate. Contribution totals approximate basis.
+    const ltcg = I.ltcgPct / 100;
+    const homeGain = sale - (I.hp + closingCosts);
+    const excl = (y >= 2) ? I.sec121Cap : 0;
+    const taxableHomeGain = Math.max(0, homeGain - excl);
+    const buyerStkGain = Math.max(0, buyerStk - cBuyerInvested);
+    const buyerExitTax = (taxableHomeGain + buyerStkGain) * ltcg;
+    const renterExitTax = Math.max(0, stk - cInvested) * ltcg;
+    const btAT = bt - buyerExitTax;
+    const rwAT = stk - renterExitTax;
+    const advAT = btAT - rwAT;
+
     yd.push({
       y, hve, bal:Math.max(0,bal), sale, bw, bt, rw:stk, buyerStk, adv,
+      buyerExitTax, renterExitTax, btAT, rwAT, advAT,
       yPrin, yInt, yPT, yOth, yMCC, yItemized, yBaseline, itemizing, yTxDed, yBenefit, yNetCost,
       yRent, yExtra:yNetCost-yRent, rent:curRent,
       cP, cInt, cPT, cOth, cMCC, cTxDed, cBenefit, cNetCost,
@@ -594,10 +614,11 @@ function computeModel(I) {
     return Math.ceil(mo / 12);
   })();
 
-  let bkY = null;
+  let bkY = null, bkYAT = null;
   for (const d of yd) { if (d.adv >= 0) { bkY = d.y; break; } }
+  for (const d of yd) { if (d.advAT >= 0) { bkYAT = d.y; break; } }
 
-  return { yd, ad, mp, mpMin, downPay, loan, creditAmount, closingCosts, renterInitial, payoffY, bkY };
+  return { yd, ad, mp, mpMin, downPay, loan, creditAmount, closingCosts, renterInitial, payoffY, bkY, bkYAT };
 }
 // =========================== FANGDAI-ENGINE-END ===========================
 
@@ -687,7 +708,19 @@ function render(M, I) {
 
       <tr class="spacer"><td colspan="2"></td></tr>
       <tr class="final"><td>${T('买房盈亏 = A − B','Buy P&L = A − B')}</td><td style="color:var(${s.adv>=0?'--success':'--danger'})">${F(s.adv)}</td></tr>
+
+      <tr class="spacer"><td colspan="2"></td></tr>
+      <tr class="section-head"><td colspan="2">${T('Step 3: 税后对比（§121 主房免税 + 股票增值缴税）','Step 3: After-Tax (§121 exclusion + LTCG on stocks)')}</td></tr>
+      <tr><td>${T('− 买房方退出税（房+股）','− Buyer Exit Tax (home + stocks)')}</td><td style="color:var(--danger)">−${F(s.buyerExitTax)}</td></tr>
+      <tr class="sub"><td>${T('= 买房方税后净值 (A′)','= Buyer After-Tax Value (A′)')}</td><td style="color:var(--primary)">${F(s.btAT)}</td></tr>
+      <tr><td>${T('− 租房方资本利得税','− Renter Capital-Gains Tax')}</td><td style="color:var(--danger)">−${F(s.renterExitTax)}</td></tr>
+      <tr class="sub"><td>${T('= 租房方税后净值 (B′)','= Renter After-Tax Value (B′)')}</td><td style="color:var(--warning)">${F(s.rwAT)}</td></tr>
+      <tr class="final"><td>${T('税后买房盈亏 = A′ − B′','After-Tax Buy P&L = A′ − B′')}</td><td style="color:var(${s.advAT>=0?'--success':'--danger'})">${F(s.advAT)}</td></tr>
     </table>
+    <p class="note" style="margin-top:8px">${T(
+      '税后行假设买卖双方都在该年清仓变现：买房方主房增值在 §121 上限内免税（第2年起，需自住满2年），双方股票收益按资本利得税率缴税。若租房方不卖股票，其税负可无限期递延，此时应看税前行。',
+      'After-tax rows assume BOTH parties liquidate that year: the buyer&#39;s home gain is §121-exempt up to the cap (from year 2 — requires 2 years of use); stock gains on both sides are taxed at the LTCG rate. A renter who keeps holding defers the tax indefinitely — compare pre-tax rows in that case.'
+    )}</p>
     <div class="conclusion" style="margin-top:14px">
       <div class="ci"><div class="ci-label">${T('买房方总净值 (A)','Buyer Total Net Asset (A)')}</div><div class="ci-value" style="color:var(--primary)">${F(buyerTotalAsset)}</div></div>
       <div class="ci"><div class="ci-label">${T('租房+投资净值 (B)','Renter Net Value (B)')}</div><div class="ci-value" style="color:var(--warning)">${F(s.stk)}</div></div>

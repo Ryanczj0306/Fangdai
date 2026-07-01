@@ -52,6 +52,8 @@ class Inputs:
     inflation_pct: float = 2.5     # general inflation; grows the standard deduction
     selling_cost_pct: float = 6.0  # sale transaction cost % of home value
     closing_cost_pct: float = 3.0  # purchase closing costs % of home price
+    ltcg_rate_pct: float = 15.0    # long-term cap-gains rate (18.8 with NIIT)
+    sec121_cap: float = 500_000    # §121 primary-home exclusion (MFJ; 250k single)
     rent: float = 2_000            # $/mo, year 1
     rent_growth_pct: float = 3.0
     stock_return_pct: float = 8.0
@@ -69,6 +71,8 @@ class Inputs:
         self.charity = max(0.0, self.charity)
         self.selling_cost_pct = max(0.0, min(100.0, self.selling_cost_pct))
         self.closing_cost_pct = max(0.0, min(100.0, self.closing_cost_pct))
+        self.ltcg_rate_pct = max(0.0, min(100.0, self.ltcg_rate_pct))
+        self.sec121_cap = max(0.0, self.sec121_cap)
         self.horizon = max(1, min(30, self.horizon))
         return self
 
@@ -80,9 +84,14 @@ class YearRow:
     home_value: float
     loan_balance: float
     sale_proceeds: float           # home value net of selling_cost_pct
-    buyer_after_sale: float        # cash + buyerStk
-    renter_value: float            # stk
-    advantage: float               # buyer_after_sale - renter_value
+    buyer_after_sale: float        # cash + buyerStk (pre-tax)
+    renter_value: float            # stk (pre-tax)
+    advantage: float               # buyer_after_sale - renter_value (pre-tax)
+    buyer_exit_tax: float          # LTCG on (§121-excess home gain + buyer stock gain)
+    renter_exit_tax: float         # LTCG on renter's stock gain if liquidated
+    buyer_after_tax: float         # buyer_after_sale - buyer_exit_tax
+    renter_after_tax: float        # renter_value - renter_exit_tax
+    advantage_after_tax: float     # buyer_after_tax - renter_after_tax
     y_principal: float
     y_interest: float
     y_property_tax: float
@@ -121,7 +130,8 @@ class Result:
     closing_costs: float
     renter_initial: float          # buyer's upfront cash (incl. closing costs)
     payoff_year: Optional[int]
-    breakeven_year: Optional[int]
+    breakeven_year: Optional[int]            # pre-tax
+    breakeven_year_after_tax: Optional[int]  # with §121 + LTCG at exit
     years: list[YearRow] = field(default_factory=list)
 
 
@@ -256,6 +266,22 @@ def compute(I: Inputs) -> Result:
         bt = bw + buyer_stk
         adv = bt - stk
 
+        # After-tax exit if both parties liquidate at end of year y:
+        # the buyer's primary-home gain is §121-exempt up to sec121_cap
+        # (2-of-5-years ownership+use, so no exclusion in year 1); stock
+        # gains on BOTH sides are taxed at the LTCG rate. Contribution
+        # totals are used as basis (approximation; withdrawals ignored).
+        ltcg = I.ltcg_rate_pct / 100.0
+        home_gain = sale - (I.home_price + closing_costs)
+        excl = I.sec121_cap if y >= 2 else 0.0
+        taxable_home_gain = max(0.0, home_gain - excl)
+        buyer_stk_gain = max(0.0, buyer_stk - c_buyer_invested)
+        buyer_exit_tax = (taxable_home_gain + buyer_stk_gain) * ltcg
+        renter_exit_tax = max(0.0, stk - c_invested) * ltcg
+        bt_at = bt - buyer_exit_tax
+        rw_at = stk - renter_exit_tax
+        adv_at = bt_at - rw_at
+
         years.append(YearRow(
             y=y,
             home_value=hve,
@@ -264,6 +290,11 @@ def compute(I: Inputs) -> Result:
             buyer_after_sale=bt,
             renter_value=stk,
             advantage=adv,
+            buyer_exit_tax=buyer_exit_tax,
+            renter_exit_tax=renter_exit_tax,
+            buyer_after_tax=bt_at,
+            renter_after_tax=rw_at,
+            advantage_after_tax=adv_at,
             y_principal=y_prin,
             y_interest=y_int,
             y_property_tax=y_pt,
@@ -305,6 +336,9 @@ def compute(I: Inputs) -> Result:
         payoff_year = -(-mo // 12)  # ceil
 
     breakeven_year: Optional[int] = next((r.y for r in years if r.advantage >= 0), None)
+    breakeven_year_after_tax: Optional[int] = next(
+        (r.y for r in years if r.advantage_after_tax >= 0), None,
+    )
 
     return Result(
         inputs=asdict(I),
@@ -317,6 +351,7 @@ def compute(I: Inputs) -> Result:
         renter_initial=renter_initial,
         payoff_year=payoff_year,
         breakeven_year=breakeven_year,
+        breakeven_year_after_tax=breakeven_year_after_tax,
         years=years,
     )
 
@@ -332,7 +367,7 @@ def _T(zh: str, en: str, lang: str) -> str:
     return zh if lang == "zh" else en
 
 
-def render_text(r: Result, full_table: bool = False) -> str:
+def render_text(r: Result, full_table: bool = False, after_tax: bool = False) -> str:
     I = r.inputs
     lang = I.get("lang", "en")
     py = I["horizon"]
@@ -475,6 +510,32 @@ def render_text(r: Result, full_table: bool = False) -> str:
         lines.append(f"  {k:<46s} {v:>16s}")
     lines.append("")
 
+    ltcg_pct = I.get("ltcg_rate_pct", 15.0)
+    lines.append(_T(
+        f"税后退出（§121 主房免税 ≤ {_fmt_money(I.get('sec121_cap', 500_000))}，股票增值按 {ltcg_pct:g}% 缴税）:",
+        f"After-tax exit (§121 home exclusion ≤ {_fmt_money(I.get('sec121_cap', 500_000))}; "
+        f"stock gains taxed {ltcg_pct:g}%):",
+        lang,
+    ))
+    at_rows = [
+        (_T("− 买房方退出税（房+股）", "− Buyer exit tax (home + stocks)", lang),
+            "-" + _fmt_money(s.buyer_exit_tax).lstrip("-")),
+        (_T("= 买房方税后净值 (A′)", "= Buyer after-tax value (A′)", lang), _fmt_money(s.buyer_after_tax)),
+        (_T("− 租房方资本利得税", "− Renter capital-gains tax", lang),
+            "-" + _fmt_money(s.renter_exit_tax).lstrip("-")),
+        (_T("= 租房方税后净值 (B′)", "= Renter after-tax value (B′)", lang), _fmt_money(s.renter_after_tax)),
+        (_T("税后买房盈亏 = A′ − B′", "After-tax buy P&L = A′ − B′", lang), _fmt_money(s.advantage_after_tax)),
+    ]
+    for k, v in at_rows:
+        lines.append(f"  {k:<46s} {v:>16s}")
+    lines.append(_T(
+        "  注：仅当双方在该年清仓时成立；租房方不卖股票则可无限期递延税负。",
+        "  Note: assumes both parties liquidate that year; a renter who keeps "
+        "holding defers the tax indefinitely.",
+        lang,
+    ))
+    lines.append("")
+
     # Year-by-year table
     lines.append("-" * 72)
     lines.append(_T("逐年 (1-30):", "Year-by-year (1-30):", lang))
@@ -486,22 +547,37 @@ def render_text(r: Result, full_table: bool = False) -> str:
     else:
         rows_show = r.years
 
-    hdr = (
-        f"{'yr':>3s} {_T('房价','home',lang):>10s} {_T('贷款余额','balance',lang):>11s}"
-        f" {_T('卖房现金','cash',lang):>10s} {_T('买房A','buyer A',lang):>11s}"
-        f" {_T('租房B','renter B',lang):>11s} {_T('A-B','A-B',lang):>10s}"
-    )
+    if after_tax:
+        hdr = (
+            f"{'yr':>3s} {_T('房价','home',lang):>10s} {_T('贷款余额','balance',lang):>11s}"
+            f" {_T('买房A′','buyer A′',lang):>11s}"
+            f" {_T('租房B′','renter B′',lang):>11s} {_T('A′-B′','A′-B′',lang):>10s}"
+        )
+    else:
+        hdr = (
+            f"{'yr':>3s} {_T('房价','home',lang):>10s} {_T('贷款余额','balance',lang):>11s}"
+            f" {_T('卖房现金','cash',lang):>10s} {_T('买房A','buyer A',lang):>11s}"
+            f" {_T('租房B','renter B',lang):>11s} {_T('A-B','A-B',lang):>10s}"
+        )
     lines.append(hdr)
     for yr in rows_show:
-        cash_y = yr.sale_proceeds - yr.loan_balance
-        a = cash_y + yr.buyer_stk
-        b = yr.renter_value
         marker = " *" if yr.y == py else ""
-        lines.append(
-            f"{yr.y:>3d} {_fmt_money(yr.home_value):>10s} "
-            f"{_fmt_money(yr.loan_balance):>11s} {_fmt_money(cash_y):>10s} "
-            f"{_fmt_money(a):>11s} {_fmt_money(b):>11s} {_fmt_money(a - b):>10s}{marker}"
-        )
+        if after_tax:
+            lines.append(
+                f"{yr.y:>3d} {_fmt_money(yr.home_value):>10s} "
+                f"{_fmt_money(yr.loan_balance):>11s} "
+                f"{_fmt_money(yr.buyer_after_tax):>11s} {_fmt_money(yr.renter_after_tax):>11s} "
+                f"{_fmt_money(yr.advantage_after_tax):>10s}{marker}"
+            )
+        else:
+            cash_y = yr.sale_proceeds - yr.loan_balance
+            a = cash_y + yr.buyer_stk
+            b = yr.renter_value
+            lines.append(
+                f"{yr.y:>3d} {_fmt_money(yr.home_value):>10s} "
+                f"{_fmt_money(yr.loan_balance):>11s} {_fmt_money(cash_y):>10s} "
+                f"{_fmt_money(a):>11s} {_fmt_money(b):>11s} {_fmt_money(a - b):>10s}{marker}"
+            )
 
     lines.append("")
     lines.append(_T(
@@ -551,6 +627,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Sale transaction cost %% of home value (agent fees, etc.)")
     p.add_argument("--closing-cost-pct",    type=float, default=d.closing_cost_pct,
                    help="Purchase closing costs %% of price (title, origination, escrow)")
+    p.add_argument("--ltcg-rate-pct",       type=float, default=d.ltcg_rate_pct,
+                   help="Long-term capital-gains rate %% at exit (18.8 with NIIT; 0 disables)")
+    p.add_argument("--sec121-cap",          type=float, default=d.sec121_cap,
+                   help="§121 primary-home gain exclusion $ (500k MFJ / 250k single; "
+                        "applies from year 2 — requires 2 years of ownership+use)")
     p.add_argument("--rent",                type=float, default=d.rent,      help="$/mo, year 1")
     p.add_argument("--rent-growth-pct",     type=float, default=d.rent_growth_pct)
     p.add_argument("--stock-return-pct",    type=float, default=d.stock_return_pct)
@@ -559,6 +640,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lang",                choices=["zh", "en"], default=d.lang)
     p.add_argument("--json",  dest="as_json", action="store_true", help="Emit machine-readable JSON")
     p.add_argument("--full",  action="store_true", help="Print all 30 yearly rows in text mode")
+    p.add_argument("--after-tax", action="store_true",
+                   help="Year-by-year table shows after-tax values (§121 + LTCG at exit)")
     return p
 
 
@@ -585,6 +668,8 @@ def args_to_inputs(args: argparse.Namespace) -> Inputs:
         inflation_pct=args.inflation_pct,
         selling_cost_pct=args.selling_cost_pct,
         closing_cost_pct=args.closing_cost_pct,
+        ltcg_rate_pct=args.ltcg_rate_pct,
+        sec121_cap=args.sec121_cap,
         rent=args.rent,
         rent_growth_pct=args.rent_growth_pct,
         stock_return_pct=args.stock_return_pct,
@@ -610,7 +695,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         out["years"] = [asdict(y) for y in r.years]
         print(json.dumps(out, indent=2))
     else:
-        print(render_text(r, full_table=args.full))
+        print(render_text(r, full_table=args.full, after_tax=args.after_tax))
     return 0
 
 

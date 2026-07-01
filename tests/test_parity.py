@@ -37,6 +37,7 @@ FIELD_MAP = {
     "mcc_pct": "mccPct", "std_deduction": "stdDed", "salt_cap": "saltCap",
     "charity": "charity", "inflation_pct": "inflPct",
     "selling_cost_pct": "sellCostPct", "closing_cost_pct": "closeCostPct",
+    "ltcg_rate_pct": "ltcgPct", "sec121_cap": "sec121Cap",
     "rent": "rent", "rent_growth_pct": "rg", "stock_return_pct": "sr",
     "house_return_pct": "hr", "horizon": "py", "extra_pay": "customPay",
     "loan_credit_pct": "creditsPct", "down_pay_by_credit": "downPayByCredit",
@@ -49,12 +50,16 @@ TOP_MAP = [
     ("credit_amount", "creditAmount"), ("closing_costs", "closingCosts"),
     ("renter_initial", "renterInitial"),
     ("payoff_year", "payoffY"), ("breakeven_year", "bkY"),
+    ("breakeven_year_after_tax", "bkYAT"),
 ]
 
 # (python YearRow attr, JS yd key) per-year comparisons
 YEAR_MAP = [
     ("advantage", "adv"), ("loan_balance", "bal"),
     ("buyer_after_sale", "bt"), ("renter_value", "rw"),
+    ("buyer_exit_tax", "buyerExitTax"), ("renter_exit_tax", "renterExitTax"),
+    ("buyer_after_tax", "btAT"), ("renter_after_tax", "rwAT"),
+    ("advantage_after_tax", "advAT"),
     ("home_value", "hve"), ("sale_proceeds", "sale"),
     ("y_interest", "yInt"), ("y_principal", "yPrin"),
     ("y_property_tax", "yPT"), ("y_other", "yOth"),
@@ -94,6 +99,14 @@ SCENARIOS: dict[str, dict] = {
                       selling_cost_pct=8, closing_cost_pct=4, tax_rate_pct=24),
     "free_transactions": dict(home_price=500_000, down_pct=20, apr=6.5,
                               extra_pay=0, selling_cost_pct=0, closing_cost_pct=0),
+    "after_tax_niit": dict(home_price=400_000, down_pct=50, apr=6.5, extra_pay=0,
+                           house_return_pct=5, stock_return_pct=8, rent=2_000,
+                           ltcg_rate_pct=18.8, tax_rate_pct=24),
+    "sec121_cap_exceeded": dict(home_price=1_000_000, down_pct=30, apr=6.5,
+                                extra_pay=0, house_return_pct=12,
+                                ltcg_rate_pct=15, sec121_cap=500_000),
+    "no_exit_tax": dict(home_price=400_000, down_pct=20, apr=6.5, extra_pay=0,
+                        ltcg_rate_pct=0),
 }
 
 
