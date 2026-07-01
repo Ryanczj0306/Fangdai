@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fangdai"
+version = "1.0.0"
+description = "Buy vs Rent + Invest calculator (Texas-flavored): mortgage amortization, incremental itemized-over-standard tax benefit with SALT cap, §121 after-tax exit comparison"
+readme = "cli/README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Zijian Chen" }]
+keywords = ["mortgage", "buy-vs-rent", "personal-finance", "calculator", "texas"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Environment :: Console",
+    "Topic :: Office/Business :: Financial",
+]
+
+[project.urls]
+Homepage = "https://github.com/Ryanczj0306/Fangdai"
+Calculator = "https://ryanczj0306.github.io/Fangdai/"
+
+[project.scripts]
+fangdai = "fangdai:main"
+
+[tool.setuptools]
+package-dir = { "" = "cli" }
+py-modules = ["fangdai"]
