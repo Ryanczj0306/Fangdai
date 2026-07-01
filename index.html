@@ -154,7 +154,7 @@
         <div class="f"><label>标准扣除额（年）</label><div class="iw"><input id="stdDed" type="number" value="32200" min="0" step="100" class="hu"><span class="u">$</span></div></div>
         <div class="f"><label>SALT 抵扣上限（年）</label><div class="iw"><input id="saltCap" type="number" value="40400" min="0" step="100" class="hu"><span class="u">$</span></div></div>
         <div class="f"><label>慈善捐款（年）</label><div class="iw"><input id="charity" type="number" value="0" min="0" step="100" class="hu"><span class="u">$</span></div></div>
-        <div class="f"><label>通胀率（扣除额年涨幅）</label><div class="iw"><input id="inflation" type="number" value="2.5" step="0.1" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>通胀率（扣除额/持有成本涨幅）</label><div class="iw"><input id="inflation" type="number" value="2.5" step="0.1" class="hu"><span class="u">%</span></div></div>
       </div>
       <div class="ig">
         <h3>交易成本</h3>
@@ -289,14 +289,14 @@ function applyStaticI18n() {
   const labelsZh = [
     '房屋购买价格', '首付比例', '首付抵扣', '贷款年利率 (APR)', '贷款年限', '每月还款额（可多还）',
     '房产税率（年）', '自住房减免额', 'HOA 月费', 'PMI 月费（还本<20%时）', '房屋保险（年）', '房屋维修费（年）', '所得税率', 'MCC 比例（利息的%）',
-    '标准扣除额（年）', 'SALT 抵扣上限（年）', '慈善捐款（年）', '通胀率（扣除额年涨幅）',
+    '标准扣除额（年）', 'SALT 抵扣上限（年）', '慈善捐款（年）', '通胀率（扣除额/持有成本涨幅）',
     '卖房交易费率', '购房过户费率',
     '每月租金', '租金年涨幅', '股市年回报率', '房市年增值率'
   ];
   const labelsEn = [
     'Home Price', 'Down Payment %', 'Credits', 'APR', 'Loan Term', 'Monthly Payment (Optional Extra)',
     'Property Tax Rate (Annual)', 'Homestead Exemption', 'HOA Monthly', 'PMI Monthly (when equity < 20%)', 'Home Insurance (Annual)', 'Maintenance (Annual)', 'Income Tax Rate', 'MCC Rate (% of interest)',
-    'Standard Deduction (Annual)', 'SALT Cap (Annual)', 'Charity (Annual)', 'Inflation (grows std deduction)',
+    'Standard Deduction (Annual)', 'SALT Cap (Annual)', 'Charity (Annual)', 'Inflation (deductions & costs)',
     'Selling Cost %', 'Closing Cost %',
     'Monthly Rent', 'Rent Growth (Annual)', 'Stock Return (Annual)', 'Home Appreciation (Annual)'
   ];
@@ -485,6 +485,7 @@ function computeModel(I) {
   const yd=[], ad=[];
 
   for (let y=1; y<=30; y++) {
+    const infl = Math.pow(1 + I.inflPct/100, y-1);
     const hvs = I.hp * Math.pow(1+I.hr/100, y-1);
     const hve = I.hp * Math.pow(1+I.hr/100, y);
     const taxable = Math.max(0, hvs - I.hs);
@@ -492,6 +493,11 @@ function computeModel(I) {
     const mPT = yPT / 12;
     const curRent = I.rent * Math.pow(1+I.rg/100, y-1);
     const yRent = curRent * 12;
+    // Holding costs grow with inflation (rent already grows; keeping these
+    // flat silently favored buying on long horizons). PMI stays nominal.
+    const hoaM = I.hoa * infl;
+    const insY = I.ins * infl;
+    const mntY = I.mnt * infl;
 
     // Pass 1 — the year's amortization schedule, side-effect free, so the
     // tax benefit can be computed on ANNUAL totals (the standard-deduction
@@ -518,7 +524,7 @@ function computeModel(I) {
     const dedInt = Math.max(0, yInt - yMCC);
     const saltDed = Math.min(yPT, I.saltCap);
     const yItemized = dedInt + saltDed + I.charity;
-    const stdY = I.stdDed * Math.pow(1 + I.inflPct/100, y-1);
+    const stdY = I.stdDed * infl;
     const yBaseline = stdY + Math.min(I.charity, CHARITY_ATL_CAP);
     const itemizing = yItemized > yBaseline;
     const yTxDed = Math.max(0, yItemized - yBaseline) * txR;
@@ -536,7 +542,7 @@ function computeModel(I) {
       const pmi = (downPay + cumPrin < 0.2 * I.hp) ? I.pmi : 0;
       yPMI += pmi;
 
-      const totalBuy = mPay + mPT + I.hoa + I.ins/12 + I.mnt/12 + pmi;
+      const totalBuy = mPay + mPT + hoaM + insY/12 + mntY/12 + pmi;
       const netBuy = totalBuy - mBenefit;
       stk = stk * (1 + smr);
       buyerStk = buyerStk * (1 + smr);
@@ -554,7 +560,7 @@ function computeModel(I) {
       if (y<=5) ad.push({month:(y-1)*12+m, payment:mPay, principal:mPrin, interest:mInt, balance:bal, totalBuy, taxSave:mBenefit, rent:curRent});
     }
 
-    const yOth = I.hoa*12 + I.ins + I.mnt + yPMI;
+    const yOth = hoaM*12 + insY + mntY + yPMI;
     cP+=yPrin; cInt+=yInt; cPT+=yPT; cOth+=yOth; cMCC+=yMCC; cTxDed+=yTxDed; cRent+=yRent;
     const yBenefit = yMCC + yTxDed;
     const cBenefit = cMCC + cTxDed;

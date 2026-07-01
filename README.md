@@ -52,7 +52,7 @@ Both versions use the same model (mortgage amortized monthly, incremental itemiz
   from the mortgage-interest deduction.
 - MCC (default **0%** — programs have income limits most buyers exceed) credits
   a share of interest dollar-for-dollar and removes it from deductible interest.
-- After payoff: only holding costs remain. If rent exceeds holding cost, the difference is invested by the buyer.
+- HOA, insurance, and maintenance grow with `--inflation-pct` (rent already grows; flat costs silently favored buying long-horizon). PMI stays nominal. After payoff: only holding costs remain. If rent exceeds holding cost, the difference is invested by the buyer.
 - Sale cost defaults to 6% of home value (`--selling-cost-pct`); purchase closing costs default to 3% of price (`--closing-cost-pct`) and are treated as upfront cash the renter alternatively invests.
 
 ## DFW house-hunt tool

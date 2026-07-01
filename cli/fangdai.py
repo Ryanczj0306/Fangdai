@@ -167,6 +167,7 @@ def compute(I: Inputs) -> Result:
     years: list[YearRow] = []
 
     for y in range(1, 31):
+        infl = (1 + I.inflation_pct / 100.0) ** (y - 1)
         hvs = I.home_price * (1 + I.house_return_pct / 100.0) ** (y - 1)
         hve = I.home_price * (1 + I.house_return_pct / 100.0) ** y
         taxable = max(0.0, hvs - I.homestead)
@@ -174,6 +175,11 @@ def compute(I: Inputs) -> Result:
         m_pt = y_pt / 12.0
         cur_rent = I.rent * (1 + I.rent_growth_pct / 100.0) ** (y - 1)
         y_rent = cur_rent * 12.0
+        # Holding costs grow with inflation (rent already grows; keeping these
+        # flat silently favored buying on long horizons). PMI stays nominal.
+        hoa_m = I.hoa * infl
+        ins_y = I.insurance * infl
+        mnt_y = I.maintenance * infl
 
         # Pass 1 — this year's amortization schedule, side-effect free, so the
         # tax benefit can be computed on ANNUAL totals (deductions are annual
@@ -200,7 +206,7 @@ def compute(I: Inputs) -> Result:
         ded_int = max(0.0, y_int - y_mcc)
         salt_ded = min(y_pt, I.salt_cap)
         y_itemized = ded_int + salt_ded + I.charity
-        std_y = I.std_deduction * (1 + I.inflation_pct / 100.0) ** (y - 1)
+        std_y = I.std_deduction * infl
         y_baseline = std_y + min(I.charity, CHARITY_ATL_CAP)
         itemizing = y_itemized > y_baseline
         y_tx_ded = max(0.0, y_itemized - y_baseline) * tx_r
@@ -217,7 +223,7 @@ def compute(I: Inputs) -> Result:
             pmi = I.pmi if (down_pay + cum_prin < 0.2 * I.home_price) else 0.0
             y_pmi += pmi
 
-            total_buy = m_pay + m_pt + I.hoa + I.insurance / 12.0 + I.maintenance / 12.0 + pmi
+            total_buy = m_pay + m_pt + hoa_m + ins_y / 12.0 + mnt_y / 12.0 + pmi
             net_buy = total_buy - m_benefit
 
             stk *= (1 + smr)
@@ -232,7 +238,7 @@ def compute(I: Inputs) -> Result:
                 c_buyer_invested += buyer_diff
                 buyer_stk += buyer_diff
 
-        y_other = I.hoa * 12 + I.insurance + I.maintenance + y_pmi
+        y_other = hoa_m * 12 + ins_y + mnt_y + y_pmi
         cP += y_prin
         cInt += y_int
         cPT += y_pt
@@ -539,7 +545,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Charitable cash giving $/yr (itemized when itemizing; otherwise "
                         "above-the-line up to $2,000 MFJ)")
     p.add_argument("--inflation-pct",       type=float, default=d.inflation_pct,
-                   help="General inflation %%/yr — grows the standard deduction")
+                   help="General inflation %%/yr — grows the standard deduction, HOA, "
+                        "insurance, and maintenance")
     p.add_argument("--selling-cost-pct",    type=float, default=d.selling_cost_pct,
                    help="Sale transaction cost %% of home value (agent fees, etc.)")
     p.add_argument("--closing-cost-pct",    type=float, default=d.closing_cost_pct,
