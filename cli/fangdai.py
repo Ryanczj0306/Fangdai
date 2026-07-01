@@ -412,18 +412,35 @@ def render_text(r: Result, full_table: bool = False, after_tax: bool = False) ->
     lines.append(f"{pay_label}: {_fmt_money(r.monthly_payment)} "
                  f"({_T('最低', 'min', lang)} {_fmt_money(r.monthly_payment_min)} · {payoff_str})")
 
+    lines.append("")
+    lines.append(_T("★ 盈亏平衡（买房从哪一年开始赢）",
+                    "★ BREAKEVEN — the year buying starts to win", lang))
     if r.breakeven_year is not None:
         lines.append(_T(
-            f"盈亏平衡: 第 {r.breakeven_year} 年（买房开始优于租房+投资）",
-            f"Breakeven: Year {r.breakeven_year} (buying overtakes renting+investing)",
+            f"  税前:        第 {r.breakeven_year} 年起买房领先",
+            f"  Pre-tax:     buying wins from Year {r.breakeven_year}",
             lang,
         ))
     else:
         lines.append(_T(
-            "盈亏平衡: 30 年内未达成",
-            "Breakeven: not reached within 30 years",
+            "  税前:        30 年内买房未领先（租房+投资更划算）",
+            "  Pre-tax:     never within 30 years (renting+investing wins)",
             lang,
         ))
+    if r.breakeven_year_after_tax is not None:
+        lines.append(_T(
+            f"  税后(§121):  第 {r.breakeven_year_after_tax} 年起买房领先（双方清仓口径）",
+            f"  After-tax:   buying wins from Year {r.breakeven_year_after_tax} "
+            f"(§121; both liquidate)",
+            lang,
+        ))
+    else:
+        lines.append(_T(
+            "  税后(§121):  30 年内买房未领先（双方清仓口径）",
+            "  After-tax:   never within 30 years (§121; both liquidate)",
+            lang,
+        ))
+    lines.append("")
 
     lines.append(_T(
         f"实际房产税率（年1）: {eff_rate_pct:.2f}% （减免后 {_fmt_money(y1.y_property_tax)}/年）",

@@ -629,7 +629,7 @@ function calculate() {
 }
 
 function render(M, I) {
-  const { yd, ad, mp, mpMin, downPay, loan, creditAmount, closingCosts, renterInitial, payoffY, bkY } = M;
+  const { yd, ad, mp, mpMin, downPay, loan, creditAmount, closingCosts, renterInitial, payoffY, bkY, bkYAT } = M;
   const py = I.py;
   const s = yd[py-1];
   const y1 = yd[0];
@@ -644,9 +644,9 @@ function render(M, I) {
 
   $('scards').innerHTML = `
     <div class="sc blue"><div class="sl">${customPay ? T('实际月供','Actual Monthly Payment') : T('每月月供','Monthly Payment')}</div><div class="sv">${F(mp)}</div><div class="ss">${paySub}</div></div>
-    <div class="sc ${bkY?'green':'red'}"><div class="sl">${T('盈亏平衡','Breakeven')}</div><div class="sv">${bkY?T('第'+bkY+'年', 'Year '+bkY):T('30年内无','No breakeven in 30y')}</div><div class="ss">${bkY?T('买房优于租房+投资','Buying beats renting+investing'):T('租房+投资更划算','Renting+investing is better')}</div></div>
+    <div class="sc ${bkY?'green':'red'}"><div class="sl">${T('盈亏平衡（税前）','Breakeven (Pre-Tax)')}</div><div class="sv">${bkY?T('第'+bkY+'年', 'Year '+bkY):T('30年内无','None in 30y')}</div><div class="ss">${bkYAT?T('税后(§121)：第'+bkYAT+'年','After-tax (§121): Yr '+bkYAT):T('税后(§121)：30年内无','After-tax (§121): none')}</div></div>
     <div class="sc ${y1.adv>=0?'green':'red'}"><div class="sl">${T('第1年盈亏','Year 1 P&L')}</div><div class="sv">${F(y1.adv)}</div><div class="ss">${T('vs 租房+投资','vs Rent+Invest')}</div></div>
-    <div class="sc ${s.adv>=0?'green':'red'}"><div class="sl">${T(`第${py}年盈亏`,`Year ${py} P&L`)}</div><div class="sv">${F(s.adv)}</div><div class="ss">${T('你选的居住年限','Your selected horizon')}</div></div>
+    <div class="sc ${s.adv>=0?'green':'red'}"><div class="sl">${T(`第${py}年盈亏`,`Year ${py} P&L`)}</div><div class="sv">${F(s.adv)}</div><div class="ss">${T('税后(§121)：','After-tax (§121): ')+F(s.advAT)}</div></div>
     <div class="sc teal"><div class="sl">${T('实际房产税','Effective Property Tax')}</div><div class="sv">${effRate}%</div><div class="ss">${T(`减免后${F(y1.yPT)}/年`,`After exemption ${F(y1.yPT)}/yr`)}</div></div>`;
 
   // Cumulative report
