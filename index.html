@@ -157,6 +157,11 @@
         <div class="f"><label>通胀率（扣除额年涨幅）</label><div class="iw"><input id="inflation" type="number" value="2.5" step="0.1" class="hu"><span class="u">%</span></div></div>
       </div>
       <div class="ig">
+        <h3>交易成本</h3>
+        <div class="f"><label>卖房交易费率</label><div class="iw"><input id="sellCost" type="number" value="6" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>购房过户费率</label><div class="iw"><input id="closeCost" type="number" value="3" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
+      </div>
+      <div class="ig">
         <h3>租房对比</h3>
         <div class="f"><label>每月租金</label><div class="iw"><input id="rent" type="number" value="2000" class="hu"><span class="u">$</span></div></div>
         <div class="f"><label>租金年涨幅</label><div class="iw"><input id="rentGrowth" type="number" value="3" step="0.5" class="hu"><span class="u">%</span></div></div>
@@ -265,7 +270,7 @@ const T = (zh, en) => currentLang === 'zh' ? zh : en;
 const SCENARIO_FIELD_IDS = [
   'homePrice','downPct','loanCredit','apr','loanYears','customPay','downPayByCredit',
   'propTax','homestead','hoa','pmi','insurance','maintenance','taxRate','mccPct',
-  'stdDed','saltCap','charity','inflation',
+  'stdDed','saltCap','charity','inflation','sellCost','closeCost',
   'rent','rentGrowth','stockReturn','houseReturn','planSlider'
 ];
 
@@ -276,8 +281,8 @@ function applyStaticI18n() {
   $('appSubtitle').textContent = T('Texas 买房成本全拆解，对比租房 + 投资股市的真实收益', 'Texas-focused home cost breakdown: Buy vs Rent + Invest');
 
   const groupTitles = document.querySelectorAll('.input-panel .ig h3');
-  const groupTextZh = ['贷款信息', '持有成本 & 税务', '租房对比', '投资回报'];
-  const groupTextEn = ['Loan', 'Holding Costs & Tax', 'Rent Assumptions', 'Investment Returns'];
+  const groupTextZh = ['贷款信息', '持有成本 & 税务', '交易成本', '租房对比', '投资回报'];
+  const groupTextEn = ['Loan', 'Holding Costs & Tax', 'Transaction Costs', 'Rent Assumptions', 'Investment Returns'];
   groupTitles.forEach((el, i) => { el.textContent = T(groupTextZh[i], groupTextEn[i]); });
 
   const labels = document.querySelectorAll('.input-panel .f > label:not([style])');
@@ -285,12 +290,14 @@ function applyStaticI18n() {
     '房屋购买价格', '首付比例', '首付抵扣', '贷款年利率 (APR)', '贷款年限', '每月还款额（可多还）',
     '房产税率（年）', '自住房减免额', 'HOA 月费', 'PMI 月费（还本<20%时）', '房屋保险（年）', '房屋维修费（年）', '所得税率', 'MCC 比例（利息的%）',
     '标准扣除额（年）', 'SALT 抵扣上限（年）', '慈善捐款（年）', '通胀率（扣除额年涨幅）',
+    '卖房交易费率', '购房过户费率',
     '每月租金', '租金年涨幅', '股市年回报率', '房市年增值率'
   ];
   const labelsEn = [
     'Home Price', 'Down Payment %', 'Credits', 'APR', 'Loan Term', 'Monthly Payment (Optional Extra)',
     'Property Tax Rate (Annual)', 'Homestead Exemption', 'HOA Monthly', 'PMI Monthly (when equity < 20%)', 'Home Insurance (Annual)', 'Maintenance (Annual)', 'Income Tax Rate', 'MCC Rate (% of interest)',
     'Standard Deduction (Annual)', 'SALT Cap (Annual)', 'Charity (Annual)', 'Inflation (grows std deduction)',
+    'Selling Cost %', 'Closing Cost %',
     'Monthly Rent', 'Rent Growth (Annual)', 'Stock Return (Annual)', 'Home Appreciation (Annual)'
   ];
   labels.forEach((el, i) => { if (labelsZh[i]) el.textContent = T(labelsZh[i], labelsEn[i]); });
@@ -432,6 +439,8 @@ function getI() {
     tr:num('taxRate',0), mccPct: Math.max(0, Math.min(100, num('mccPct',0))),
     stdDed:Math.max(0, num('stdDed',32200)), saltCap:Math.max(0, num('saltCap',40400)),
     charity:Math.max(0, num('charity',0)), inflPct:num('inflation',2.5),
+    sellCostPct:Math.max(0, Math.min(100, num('sellCost',6))),
+    closeCostPct:Math.max(0, Math.min(100, num('closeCost',3))),
     rent:num('rent',0), rg:num('rentGrowth',0),
     sr:num('stockReturn',0), hr:num('houseReturn',0),
     py:Math.min(30,Math.max(1,num('planSlider',10))),
@@ -453,7 +462,10 @@ function computeModel(I) {
   const downPay = I.hp * totalDownPct / 100;
   const loan = Math.max(0, I.hp - downPay);
   const creditAmount = I.hp * Math.min(I.creditsPct, totalDownPct) / 100;
-  const renterInitial = I.downPayByCredit ? I.hp * Math.max(0, totalDownPct/100 - I.creditsPct/100) : downPay;
+  // Closing costs are cash the buyer pays at purchase on top of the down
+  // payment; the renter invests the same total upfront cash instead.
+  const closingCosts = I.hp * I.closeCostPct / 100;
+  const renterInitial = (I.downPayByCredit ? I.hp * Math.max(0, totalDownPct/100 - I.creditsPct/100) : downPay) + closingCosts;
 
   const mr = I.apr / 100 / 12;
   const np = I.ly * 12;
@@ -549,7 +561,7 @@ function computeModel(I) {
     const yNetCost = yInt + yPT + yOth - yBenefit;
     const cNetCost = cInt + cPT + cOth - cBenefit;
 
-    const sale = hve * 0.93;
+    const sale = hve * (1 - I.sellCostPct / 100);
     const bw = sale - Math.max(0, bal);
     const bt = bw + buyerStk;
     const adv = bt - stk;
@@ -579,7 +591,7 @@ function computeModel(I) {
   let bkY = null;
   for (const d of yd) { if (d.adv >= 0) { bkY = d.y; break; } }
 
-  return { yd, ad, mp, mpMin, downPay, loan, creditAmount, renterInitial, payoffY, bkY };
+  return { yd, ad, mp, mpMin, downPay, loan, creditAmount, closingCosts, renterInitial, payoffY, bkY };
 }
 // =========================== FANGDAI-ENGINE-END ===========================
 
@@ -590,7 +602,7 @@ function calculate() {
 }
 
 function render(M, I) {
-  const { yd, ad, mp, mpMin, downPay, loan, creditAmount, renterInitial, payoffY, bkY } = M;
+  const { yd, ad, mp, mpMin, downPay, loan, creditAmount, closingCosts, renterInitial, payoffY, bkY } = M;
   const py = I.py;
   const s = yd[py-1];
   const y1 = yd[0];
@@ -635,7 +647,7 @@ function render(M, I) {
       <div class="rbox"><h4>${T(`租房 ${py} 年 + 股市投资`,`Renting ${py} Years + Stock Investing`)}</h4>
         <div class="rl"><span class="k">${T(`${py}年累计租金`,`${py}-Year Total Rent`)}</span><span class="v">${F(s.cRent)}</span></div>
         <div class="rl"><span class="k">${T('买房净成本比租房多花','Buy Net Cost minus Rent')}</span><span class="v ${s.cExtra>0?'r':'g'}">${F(s.cExtra)}</span></div>
-        <div class="rl sep"><span class="k">${I.downPayByCredit ? T('首付自付部分（租房方可炒股）','Out-of-Pocket Down (Renter Invests This)') : T('首付投入股市','Down Payment Invested')}</span><span class="v">${F(renterInitial)}</span></div>
+        <div class="rl sep"><span class="k">${I.downPayByCredit ? T('首付自付+过户费（租房方投资）','Out-of-Pocket Down + Closing (Renter Invests)') : T('首付+过户费投入股市','Down + Closing Invested')}</span><span class="v">${F(renterInitial)}</span></div>
         <div class="rl"><span class="k">${T('每月差额累计投入','Cumulative Monthly Difference Invested')}</span><span class="v">${F(s.cInvested - renterInitial)}</span></div>
         <div class="rl"><span class="k">${T(`股市投资收益 (${I.sr}%/年)`,`Stock Investment Gain (${I.sr}%/yr)`)}</span><span class="v g">${F(stockGain)}</span></div>
         <div class="rl total"><span class="k">${T('股市投资总值','Stock Portfolio Value')}</span><span class="v">${F(s.stk)}</span></div>
@@ -643,7 +655,7 @@ function render(M, I) {
     </div></div>`;
 
   // 卖房盈亏计算表
-  const sellingFee = s.hve * 0.07;
+  const sellingFee = s.hve * I.sellCostPct / 100;
   const saleIncome = s.hve - sellingFee;
   const cashAfterSale = saleIncome - s.bal;
   const buyerTotalAsset = cashAfterSale + s.buyerStk;
@@ -653,7 +665,7 @@ function render(M, I) {
     <table class="calc-table">
       <tr class="section-head"><td colspan="2">${T('Step 1: 卖房能拿到多少钱','Step 1: Net Proceeds from Selling')}</td></tr>
       <tr><td>${T(`房屋市值（第${py}年末）`,`Home Value (End of Year ${py})`)}</td><td>${F(s.hve)}</td></tr>
-      <tr><td>${T('− 卖房交易费用（7%）','− Selling Cost (7%)')}</td><td style="color:var(--danger)">−${F(sellingFee)}</td></tr>
+      <tr><td>${T(`− 卖房交易费用（${I.sellCostPct}%）`,`− Selling Cost (${I.sellCostPct}%)`)}</td><td style="color:var(--danger)">−${F(sellingFee)}</td></tr>
       <tr><td>${T('= 卖房收入','= Sale Proceeds')}</td><td>${F(saleIncome)}</td></tr>
       <tr><td>${T('− 剩余贷款余额','− Remaining Loan Balance')}</td><td style="color:var(--danger)">−${F(s.bal)}</td></tr>
       <tr class="sub"><td>${T('= 卖房现金到手','= Cash After Sale')}</td><td style="color:var(--primary)">${F(cashAfterSale)}</td></tr>
@@ -662,7 +674,7 @@ function render(M, I) {
 
       <tr class="spacer"><td colspan="2"></td></tr>
       <tr class="section-head2"><td colspan="2">${T('Step 2: 如果租房，首付+多花的钱投股市值多少','Step 2: Rent + Invest Net Value')}</td></tr>
-      <tr><td>${I.downPayByCredit ? T('首付自付部分（租房方可炒股）','Out-of-Pocket Down (Renter Invests This)') : T('首付金额（初始投入股市）','Initial Down Payment Investment')}</td><td>${F(renterInitial)}</td></tr>
+      <tr><td>${I.downPayByCredit ? T('首付自付+过户费（租房方投资）','Out-of-Pocket Down + Closing (Renter Invests)') : T('首付+过户费（初始投入股市）','Down + Closing (Initial Investment)')}</td><td>${F(renterInitial)}</td></tr>
       <tr><td>${T('+ 买房比租房每月多花累计投入','+ Cumulative Monthly Difference Invested')}</td><td>${F(s.cInvested - renterInitial)}</td></tr>
       <tr><td>${T(`+ ${py}年股市投资收益（年化${I.sr}%）`,`+ ${py}-Year Stock Gain (${I.sr}% annualized)`)}</td><td style="color:var(--success)">${F(stockGain)}</td></tr>
       <tr class="sub"><td>${T('= 租房+投资净值 (B)','= Renter Net Value (B)')}</td><td style="color:var(--warning)">${F(s.stk)}</td></tr>

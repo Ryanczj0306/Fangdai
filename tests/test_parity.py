@@ -36,6 +36,7 @@ FIELD_MAP = {
     "insurance": "ins", "maintenance": "mnt", "tax_rate_pct": "tr",
     "mcc_pct": "mccPct", "std_deduction": "stdDed", "salt_cap": "saltCap",
     "charity": "charity", "inflation_pct": "inflPct",
+    "selling_cost_pct": "sellCostPct", "closing_cost_pct": "closeCostPct",
     "rent": "rent", "rent_growth_pct": "rg", "stock_return_pct": "sr",
     "house_return_pct": "hr", "horizon": "py", "extra_pay": "customPay",
     "loan_credit_pct": "creditsPct", "down_pay_by_credit": "downPayByCredit",
@@ -45,7 +46,8 @@ FIELD_MAP = {
 TOP_MAP = [
     ("monthly_payment", "mp"), ("monthly_payment_min", "mpMin"),
     ("down_payment", "downPay"), ("loan", "loan"),
-    ("credit_amount", "creditAmount"), ("renter_initial", "renterInitial"),
+    ("credit_amount", "creditAmount"), ("closing_costs", "closingCosts"),
+    ("renter_initial", "renterInitial"),
     ("payoff_year", "payoffY"), ("breakeven_year", "bkY"),
 ]
 
@@ -88,6 +90,10 @@ SCENARIOS: dict[str, dict] = {
     "zero_apr": dict(home_price=400_000, down_pct=20, apr=0, extra_pay=0),
     "high_inflation": dict(home_price=600_000, down_pct=30, apr=6.5,
                            extra_pay=0, inflation_pct=6, tax_rate_pct=24),
+    "txn_costs": dict(home_price=500_000, down_pct=20, apr=6.5, extra_pay=0,
+                      selling_cost_pct=8, closing_cost_pct=4, tax_rate_pct=24),
+    "free_transactions": dict(home_price=500_000, down_pct=20, apr=6.5,
+                              extra_pay=0, selling_cost_pct=0, closing_cost_pct=0),
 }
 
 

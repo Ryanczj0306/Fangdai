@@ -20,7 +20,7 @@ python cli/fangdai.py --lang zh --full               # Chinese, full 30-year tab
 python cli/fangdai.py --json > scenario.json         # machine-readable output
 ```
 
-Both versions use the same model (mortgage amortized monthly, MCC adjusts deductible interest, PMI dropped at 80% LTV, sale assumes 7% selling cost). See [`cli/README.md`](./cli/README.md) for all flags.
+Both versions use the same model (mortgage amortized monthly, incremental itemized-over-standard tax benefit with SALT cap, PMI dropped at 80% LTV, configurable selling/closing costs). See [`cli/README.md`](./cli/README.md) for all flags.
 
 ### Defaults (current scenario)
 
@@ -53,7 +53,7 @@ Both versions use the same model (mortgage amortized monthly, MCC adjusts deduct
 - MCC (default **0%** — programs have income limits most buyers exceed) credits
   a share of interest dollar-for-dollar and removes it from deductible interest.
 - After payoff: only holding costs remain. If rent exceeds holding cost, the difference is invested by the buyer.
-- Sale assumes 7% selling cost.
+- Sale cost defaults to 6% of home value (`--selling-cost-pct`); purchase closing costs default to 3% of price (`--closing-cost-pct`) and are treated as upfront cash the renter alternatively invests.
 
 ## DFW house-hunt tool
 

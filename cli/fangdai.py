@@ -50,6 +50,8 @@ class Inputs:
     salt_cap: float = 40_400       # SALT deduction cap $/yr (OBBBA, 2026)
     charity: float = 0.0           # charitable cash giving $/yr
     inflation_pct: float = 2.5     # general inflation; grows the standard deduction
+    selling_cost_pct: float = 6.0  # sale transaction cost % of home value
+    closing_cost_pct: float = 3.0  # purchase closing costs % of home price
     rent: float = 2_000            # $/mo, year 1
     rent_growth_pct: float = 3.0
     stock_return_pct: float = 8.0
@@ -65,6 +67,8 @@ class Inputs:
         self.std_deduction = max(0.0, self.std_deduction)
         self.salt_cap = max(0.0, self.salt_cap)
         self.charity = max(0.0, self.charity)
+        self.selling_cost_pct = max(0.0, min(100.0, self.selling_cost_pct))
+        self.closing_cost_pct = max(0.0, min(100.0, self.closing_cost_pct))
         self.horizon = max(1, min(30, self.horizon))
         return self
 
@@ -75,7 +79,7 @@ class YearRow:
     y: int
     home_value: float
     loan_balance: float
-    sale_proceeds: float           # 93% of home value
+    sale_proceeds: float           # home value net of selling_cost_pct
     buyer_after_sale: float        # cash + buyerStk
     renter_value: float            # stk
     advantage: float               # buyer_after_sale - renter_value
@@ -114,7 +118,8 @@ class Result:
     down_payment: float
     loan: float
     credit_amount: float
-    renter_initial: float
+    closing_costs: float
+    renter_initial: float          # buyer's upfront cash (incl. closing costs)
     payoff_year: Optional[int]
     breakeven_year: Optional[int]
     years: list[YearRow] = field(default_factory=list)
@@ -127,10 +132,13 @@ def compute(I: Inputs) -> Result:
     down_pay = I.home_price * total_down_pct / 100.0
     loan = max(0.0, I.home_price - down_pay)
     credit_amount = I.home_price * min(I.loan_credit_pct, total_down_pct) / 100.0
+    # Closing costs are cash the buyer pays at purchase on top of the down
+    # payment; the renter invests the same total upfront cash instead.
+    closing_costs = I.home_price * I.closing_cost_pct / 100.0
     renter_initial = (
         I.home_price * max(0.0, total_down_pct / 100.0 - I.loan_credit_pct / 100.0)
         if I.down_pay_by_credit else down_pay
-    )
+    ) + closing_costs
 
     mr = I.apr / 100.0 / 12.0
     np_months = I.loan_years * 12
@@ -237,7 +245,7 @@ def compute(I: Inputs) -> Result:
         y_net_cost = y_int + y_pt + y_other - y_benefit
         c_net_cost = cInt + cPT + cOth - c_benefit
 
-        sale = hve * 0.93
+        sale = hve * (1 - I.selling_cost_pct / 100.0)
         bw = sale - max(0.0, bal)
         bt = bw + buyer_stk
         adv = bt - stk
@@ -299,6 +307,7 @@ def compute(I: Inputs) -> Result:
         down_payment=down_pay,
         loan=loan,
         credit_amount=credit_amount,
+        closing_costs=closing_costs,
         renter_initial=renter_initial,
         payoff_year=payoff_year,
         breakeven_year=breakeven_year,
@@ -325,7 +334,8 @@ def render_text(r: Result, full_table: bool = False) -> str:
     y1 = r.years[0]
 
     eff_rate_pct = (y1.y_property_tax / I["home_price"] * 100) if I["home_price"] else 0.0
-    sale_fee = s.home_value * 0.07
+    sc_pct = I.get("selling_cost_pct", 6.0)
+    sale_fee = s.home_value * sc_pct / 100.0
     sale_income = s.home_value - sale_fee
     cash_after_sale = sale_income - s.loan_balance
     buyer_total_asset = cash_after_sale + s.buyer_stk
@@ -431,8 +441,8 @@ def render_text(r: Result, full_table: bool = False) -> str:
     rent_rows = [
         (_T(f"{py} 年累计租金", f"{py}-yr total rent", lang), _fmt_money(s.cum_rent)),
         (_T("买房净成本比租房多花", "Buy-net-cost minus rent", lang), _fmt_money(s.cum_net_cost - s.cum_rent)),
-        (_T("初始投入股市（首付 / 自付部分）",
-             "Initial investment (down / out-of-pocket)", lang), _fmt_money(r.renter_initial)),
+        (_T("初始投入股市（首付自付 + 过户费）",
+             "Initial investment (out-of-pocket down + closing)", lang), _fmt_money(r.renter_initial)),
         (_T("每月差额累计投入", "Cumulative monthly diff invested", lang),
             _fmt_money(s.cum_invested_renter - r.renter_initial)),
         (_T(f"股市投资收益 ({I['stock_return_pct']:.1f}%/yr)",
@@ -443,10 +453,10 @@ def render_text(r: Result, full_table: bool = False) -> str:
         lines.append(f"  {k:<46s} {v:>16s}")
     lines.append("")
 
-    lines.append(_T("卖房盈亏（按 7% 交易费）:", "Sell P&L (7% selling cost):", lang))
+    lines.append(_T(f"卖房盈亏（按 {sc_pct:g}% 交易费）:", f"Sell P&L ({sc_pct:g}% selling cost):", lang))
     sell_rows = [
         (_T(f"房屋市值（第 {py} 年末）", f"Home value (end of yr {py})", lang), _fmt_money(s.home_value)),
-        (_T("− 卖房交易费用 (7%)", "− Selling cost (7%)", lang), "-" + _fmt_money(sale_fee).lstrip("-")),
+        (_T(f"− 卖房交易费用 ({sc_pct:g}%)", f"− Selling cost ({sc_pct:g}%)", lang), "-" + _fmt_money(sale_fee).lstrip("-")),
         (_T("= 卖房收入", "= Sale proceeds", lang), _fmt_money(sale_income)),
         (_T("− 剩余贷款余额", "− Remaining loan balance", lang), "-" + _fmt_money(s.loan_balance).lstrip("-")),
         (_T("= 卖房现金到手", "= Cash after sale", lang), _fmt_money(cash_after_sale)),
@@ -477,8 +487,7 @@ def render_text(r: Result, full_table: bool = False) -> str:
     )
     lines.append(hdr)
     for yr in rows_show:
-        sale_fee_y = yr.home_value * 0.07
-        cash_y = yr.home_value - sale_fee_y - yr.loan_balance
+        cash_y = yr.sale_proceeds - yr.loan_balance
         a = cash_y + yr.buyer_stk
         b = yr.renter_value
         marker = " *" if yr.y == py else ""
@@ -531,6 +540,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "above-the-line up to $2,000 MFJ)")
     p.add_argument("--inflation-pct",       type=float, default=d.inflation_pct,
                    help="General inflation %%/yr — grows the standard deduction")
+    p.add_argument("--selling-cost-pct",    type=float, default=d.selling_cost_pct,
+                   help="Sale transaction cost %% of home value (agent fees, etc.)")
+    p.add_argument("--closing-cost-pct",    type=float, default=d.closing_cost_pct,
+                   help="Purchase closing costs %% of price (title, origination, escrow)")
     p.add_argument("--rent",                type=float, default=d.rent,      help="$/mo, year 1")
     p.add_argument("--rent-growth-pct",     type=float, default=d.rent_growth_pct)
     p.add_argument("--stock-return-pct",    type=float, default=d.stock_return_pct)
@@ -563,6 +576,8 @@ def args_to_inputs(args: argparse.Namespace) -> Inputs:
         salt_cap=args.salt_cap,
         charity=args.charity,
         inflation_pct=args.inflation_pct,
+        selling_cost_pct=args.selling_cost_pct,
+        closing_cost_pct=args.closing_cost_pct,
         rent=args.rent,
         rent_growth_pct=args.rent_growth_pct,
         stock_return_pct=args.stock_return_pct,

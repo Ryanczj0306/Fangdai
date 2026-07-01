@@ -60,6 +60,8 @@ JSON mode (`--json`) emits the full result including all 30 year rows.
 --salt-cap               SALT deduction cap $/yr (default 40400 — OBBBA 2026)
 --charity                Charitable cash giving $/yr (default 0)
 --inflation-pct          Inflation %/yr, grows the standard deduction (default 2.5)
+--selling-cost-pct       Sale transaction cost % of home value (default 6)
+--closing-cost-pct       Purchase closing costs % of price (default 3)
 --rent                   Rent $/mo year 1
 --rent-growth-pct        Annual rent growth %
 --stock-return-pct       Stock annualized return %
@@ -86,7 +88,7 @@ Same as the web app:
   interest and removes it from deductible interest. Taxes are computed on
   annual totals, then smoothed into monthly cash flow as 1/12 per month.
 - After payoff: only holding costs (PT + HOA + insurance + maintenance). If rent exceeds holding cost, the difference is invested by the buyer.
-- Sale assumes 7% selling cost.
+- Sale cost defaults to 6% of home value (`--selling-cost-pct`); purchase closing costs default to 3% of price (`--closing-cost-pct`) and are treated as upfront cash the renter alternatively invests.
 
 ## Verifying parity with the web app
 
