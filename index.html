@@ -150,7 +150,11 @@
         <div class="f"><label>房屋保险（年）</label><div class="iw"><input id="insurance" type="number" value="4800" class="hu"><span class="u">$</span></div></div>
         <div class="f"><label>房屋维修费（年）</label><div class="iw"><input id="maintenance" type="number" value="3500" class="hu"><span class="u">$</span></div></div>
         <div class="f"><label>所得税率</label><div class="iw"><input id="taxRate" type="number" value="20" step="1" class="hu"><span class="u">%</span></div></div>
-        <div class="f"><label>MCC 比例（利息的%）</label><div class="iw"><input id="mccPct" type="number" value="15" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>MCC 比例（利息的%）</label><div class="iw"><input id="mccPct" type="number" value="0" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>标准扣除额（年）</label><div class="iw"><input id="stdDed" type="number" value="32200" min="0" step="100" class="hu"><span class="u">$</span></div></div>
+        <div class="f"><label>SALT 抵扣上限（年）</label><div class="iw"><input id="saltCap" type="number" value="40400" min="0" step="100" class="hu"><span class="u">$</span></div></div>
+        <div class="f"><label>慈善捐款（年）</label><div class="iw"><input id="charity" type="number" value="0" min="0" step="100" class="hu"><span class="u">$</span></div></div>
+        <div class="f"><label>通胀率（扣除额年涨幅）</label><div class="iw"><input id="inflation" type="number" value="2.5" step="0.1" class="hu"><span class="u">%</span></div></div>
       </div>
       <div class="ig">
         <h3>租房对比</h3>
@@ -163,7 +167,7 @@
         <div class="f"><label>房市年增值率</label><div class="iw"><input id="houseReturn" type="number" value="4" step="0.5" class="hu"><span class="u">%</span></div></div>
       </div>
       <button class="btn-calc" onclick="calculate()">计 算</button>
-      <p class="note">* 首付最低3%；credits仅用于首付。还本未达贷款20%时收PMI。月供留空按最低月供；可多还提前还清。MCC：按利息的设定比例作为抵免额，剩余利息+房产税再按所得税率抵税。Homestead、卖房7%见上。</p>
+      <p class="note">* 首付最低3%；credits仅用于首付。还本未达贷款20%时收PMI。月供留空按最低月供；可多还提前还清。税务：MCC（默认0，多数人不符合资格）按利息比例抵免；只有当“税后利息+SALT封顶的房产税+慈善”超过标准扣除额（随通胀增长）时，超出部分才按所得税率抵税。Homestead、卖房7%见上。</p>
       <p class="note" style="margin-top:4px;color:var(--text2);">为何有时“越久越亏”？当持有成本高、房市增值(3%)&lt;股市(8%)时，买房每月多花的钱在股市里复利更快，短期会显亏；<strong>多还月供提前还清</strong>后月支出大降，长期买房优势会体现。</p>
     </div>
 
@@ -261,6 +265,7 @@ const T = (zh, en) => currentLang === 'zh' ? zh : en;
 const SCENARIO_FIELD_IDS = [
   'homePrice','downPct','loanCredit','apr','loanYears','customPay','downPayByCredit',
   'propTax','homestead','hoa','pmi','insurance','maintenance','taxRate','mccPct',
+  'stdDed','saltCap','charity','inflation',
   'rent','rentGrowth','stockReturn','houseReturn','planSlider'
 ];
 
@@ -279,11 +284,13 @@ function applyStaticI18n() {
   const labelsZh = [
     '房屋购买价格', '首付比例', '首付抵扣', '贷款年利率 (APR)', '贷款年限', '每月还款额（可多还）',
     '房产税率（年）', '自住房减免额', 'HOA 月费', 'PMI 月费（还本<20%时）', '房屋保险（年）', '房屋维修费（年）', '所得税率', 'MCC 比例（利息的%）',
+    '标准扣除额（年）', 'SALT 抵扣上限（年）', '慈善捐款（年）', '通胀率（扣除额年涨幅）',
     '每月租金', '租金年涨幅', '股市年回报率', '房市年增值率'
   ];
   const labelsEn = [
     'Home Price', 'Down Payment %', 'Credits', 'APR', 'Loan Term', 'Monthly Payment (Optional Extra)',
     'Property Tax Rate (Annual)', 'Homestead Exemption', 'HOA Monthly', 'PMI Monthly (when equity < 20%)', 'Home Insurance (Annual)', 'Maintenance (Annual)', 'Income Tax Rate', 'MCC Rate (% of interest)',
+    'Standard Deduction (Annual)', 'SALT Cap (Annual)', 'Charity (Annual)', 'Inflation (grows std deduction)',
     'Monthly Rent', 'Rent Growth (Annual)', 'Stock Return (Annual)', 'Home Appreciation (Annual)'
   ];
   labels.forEach((el, i) => { if (labelsZh[i]) el.textContent = T(labelsZh[i], labelsEn[i]); });
@@ -307,8 +314,8 @@ function applyStaticI18n() {
 
   const notes = document.querySelectorAll('.input-panel .note');
   if (notes[0]) notes[0].textContent = T(
-    '* 首付最低3%；credits仅用于首付。月供留空按最低月供；可多还提前还清。还本未达贷款20%时收PMI。MCC：利息的设定比例作为抵免额，剩余利息+房产税按所得税率抵税。Homestead、卖房7%见上。',
-    '* Min 3% down; credits for down payment only. Empty monthly payment uses minimum. PMI when equity < 20%. MCC: % of interest as credit; remainder + property tax deductible at your rate. Homestead, 7% selling cost included.'
+    '* 首付最低3%；credits仅用于首付。月供留空按最低月供；可多还提前还清。还本未达贷款20%时收PMI。税务：MCC（默认0，多数人不符合资格）按利息比例抵免；只有当“税后利息+SALT封顶的房产税+慈善”超过标准扣除额（随通胀增长）时，超出部分才按所得税率抵税。Homestead、卖房7%见上。',
+    '* Min 3% down; credits for down payment only. Empty monthly payment uses minimum. PMI when equity < 20%. Tax: MCC (default 0 — most buyers don\'t qualify) credits a share of interest; itemizing (after-MCC interest + SALT-capped property tax + charity) only saves tax on the portion above the inflating standard deduction. Homestead, 7% selling cost included.'
   );
   if (notes[1]) notes[1].innerHTML = T(
     '为何有时“越久越亏”？当持有成本高、房市增值(3%)&lt;股市(8%)时，买房每月多花的钱在股市里复利更快，短期会显亏；<strong>多还月供提前还清</strong>后月支出大降，长期买房优势会体现。',
@@ -415,24 +422,33 @@ async function shareScenario() {
 }
 
 function getI() {
+  // num(): empty/invalid -> default, but a typed "0" stays 0. The old
+  // `+$(id).value || dflt` pattern silently replaced 0 with the default.
+  const num = (id, dflt) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : dflt; };
   return {
-    hp:+$('homePrice').value||0, dp:Math.max(3, +$('downPct').value||3), apr:+$('apr').value||0,
-    ly:+$('loanYears').value||30, ptr:+$('propTax').value||0, hs:+$('homestead').value||0,
-    hoa:+$('hoa').value||0, pmi:Math.max(0, $('pmi').value===''?315:+$('pmi').value), ins:+$('insurance').value||0, mnt:+$('maintenance').value||0,
-    tr:+$('taxRate').value||0, mccPct: Math.max(0, Math.min(100, +$('mccPct').value || 15)),
-    rent:+$('rent').value||0, rg:+$('rentGrowth').value||0,
-    sr:+$('stockReturn').value||0, hr:+$('houseReturn').value||0,
-    py:Math.min(30,Math.max(1,+$('planSlider').value||10)),
-    customPay: +$('customPay').value || 0,
-    creditsPct: Math.max(0, Math.min(100, +$('loanCredit').value || 0)),
+    hp:num('homePrice',0), dp:Math.max(3, num('downPct',3)), apr:num('apr',0),
+    ly:num('loanYears',30), ptr:num('propTax',0), hs:num('homestead',0),
+    hoa:num('hoa',0), pmi:Math.max(0, num('pmi',315)), ins:num('insurance',0), mnt:num('maintenance',0),
+    tr:num('taxRate',0), mccPct: Math.max(0, Math.min(100, num('mccPct',0))),
+    stdDed:Math.max(0, num('stdDed',32200)), saltCap:Math.max(0, num('saltCap',40400)),
+    charity:Math.max(0, num('charity',0)), inflPct:num('inflation',2.5),
+    rent:num('rent',0), rg:num('rentGrowth',0),
+    sr:num('stockReturn',0), hr:num('houseReturn',0),
+    py:Math.min(30,Math.max(1,num('planSlider',10))),
+    customPay: num('customPay',0),
+    creditsPct: Math.max(0, Math.min(100, num('loanCredit',0))),
     downPayByCredit: $('downPayByCredit').checked,
   };
 }
 
-function calculate() {
-  const I = getI();
-  $('sliderVal').textContent = I.py + (currentLang === 'zh' ? ' 年' : 'y');
+// ========================== FANGDAI-ENGINE-BEGIN ==========================
+// Pure calculation engine — NO DOM ACCESS inside this block. It is extracted
+// verbatim and executed under Node.js by tests/test_parity.py, which asserts
+// it stays numerically in sync with the Python port in cli/fangdai.py.
+// If you change the model here, change cli/fangdai.py too (and vice versa).
+const CHARITY_ATL_CAP = 2000; // OBBBA 2026 non-itemizer charity cap (MFJ)
 
+function computeModel(I) {
   const totalDownPct = Math.max(3, I.dp);
   const downPay = I.hp * totalDownPct / 100;
   const loan = Math.max(0, I.hp - downPay);
@@ -441,7 +457,6 @@ function calculate() {
 
   const mr = I.apr / 100 / 12;
   const np = I.ly * 12;
-  const loanOrig = loan;
 
   let mpMin = 0;
   if (loan > 0 && mr > 0) { const p = Math.pow(1+mr,np); mpMin = loan*mr*p/(p-1); }
@@ -466,31 +481,51 @@ function calculate() {
     const curRent = I.rent * Math.pow(1+I.rg/100, y-1);
     const yRent = curRent * 12;
 
-    let yInt=0, yPrin=0, yMCC=0, yTxDed=0, yPMI=0;
-
+    // Pass 1 — the year's amortization schedule, side-effect free, so the
+    // tax benefit can be computed on ANNUAL totals (the standard-deduction
+    // floor and SALT cap are annual constructs, not monthly ones).
+    let tb = bal, yInt = 0;
+    const sched = [];
     for (let m=1; m<=12; m++) {
-      let mPay=0, mInt=0, mPrin=0;
-      if (bal > 0.01) {
-        mInt = bal * mr;
-        const payThisMonth = Math.min(mp, bal + mInt);
-        mPrin = Math.min(payThisMonth - mInt, bal);
-        mPay = mInt + mPrin;
-        bal = Math.max(0, bal - mPrin);
-        cumPrin += mPrin;
+      let mIntS=0, mPrinS=0;
+      if (tb > 0.01) {
+        mIntS = tb * mr;
+        const payS = Math.min(mp, tb + mIntS);
+        mPrinS = Math.min(payS - mIntS, tb);
+        tb = Math.max(0, tb - mPrinS);
       }
-      yInt += mInt; yPrin += mPrin;
+      sched.push([mIntS, mPrinS]);
+      yInt += mIntS;
+    }
+
+    // Annual tax math. MCC (if any) credits a share of interest; only the
+    // remainder is deductible. Itemizing helps only by the amount it EXCEEDS
+    // the baseline: the inflating standard deduction plus the OBBBA
+    // non-itemizer charity deduction.
+    const yMCC = yInt * mccRate;
+    const dedInt = Math.max(0, yInt - yMCC);
+    const saltDed = Math.min(yPT, I.saltCap);
+    const yItemized = dedInt + saltDed + I.charity;
+    const stdY = I.stdDed * Math.pow(1 + I.inflPct/100, y-1);
+    const yBaseline = stdY + Math.min(I.charity, CHARITY_ATL_CAP);
+    const itemizing = yItemized > yBaseline;
+    const yTxDed = Math.max(0, yItemized - yBaseline) * txR;
+    const mBenefit = (yMCC + yTxDed) / 12; // smoothed into monthly cash flow
+
+    // Pass 2 — replay the 12 months applying real cash flows.
+    let yPrin=0, yPMI=0;
+    for (let m=1; m<=12; m++) {
+      const mInt = sched[m-1][0], mPrin = sched[m-1][1];
+      const mPay = mInt + mPrin;
+      bal = Math.max(0, bal - mPrin);
+      cumPrin += mPrin;
+      yPrin += mPrin;
 
       const pmi = (downPay + cumPrin < 0.2 * I.hp) ? I.pmi : 0;
       yPMI += pmi;
 
-      const mMCC = mInt * mccRate;
-      const dedInt = Math.max(0, mInt - mMCC);
-      const txDed = (dedInt + mPT) * txR;
-      const benefit = mMCC + txDed;
-      yMCC += mMCC; yTxDed += txDed;
-
       const totalBuy = mPay + mPT + I.hoa + I.ins/12 + I.mnt/12 + pmi;
-      const netBuy = totalBuy - benefit;
+      const netBuy = totalBuy - mBenefit;
       stk = stk * (1 + smr);
       buyerStk = buyerStk * (1 + smr);
 
@@ -504,7 +539,7 @@ function calculate() {
         buyerStk += buyerDiff;
       }
 
-      if (y<=5) ad.push({month:(y-1)*12+m, payment:mPay, principal:mPrin, interest:mInt, balance:bal, totalBuy, taxSave:benefit, rent:curRent});
+      if (y<=5) ad.push({month:(y-1)*12+m, payment:mPay, principal:mPrin, interest:mInt, balance:bal, totalBuy, taxSave:mBenefit, rent:curRent});
     }
 
     const yOth = I.hoa*12 + I.ins + I.mnt + yPMI;
@@ -521,7 +556,7 @@ function calculate() {
 
     yd.push({
       y, hve, bal:Math.max(0,bal), sale, bw, bt, rw:stk, buyerStk, adv,
-      yPrin, yInt, yPT, yOth, yMCC, yTxDed, yBenefit, yNetCost,
+      yPrin, yInt, yPT, yOth, yMCC, yItemized, yBaseline, itemizing, yTxDed, yBenefit, yNetCost,
       yRent, yExtra:yNetCost-yRent, rent:curRent,
       cP, cInt, cPT, cOth, cMCC, cTxDed, cBenefit, cNetCost,
       cRent, cExtra:cNetCost-cRent, cInvested, cBuyerInvested, stk,
@@ -529,6 +564,7 @@ function calculate() {
   }
 
   const payoffY = (() => {
+    if (loan <= 0) return null; // all-cash: no loan to pay off (matches CLI)
     let b = loan, mo = 0, mrr = I.apr/100/12;
     while (b > 0.01 && mo < 360) {
       const mInt = b * mrr;
@@ -540,17 +576,23 @@ function calculate() {
     return Math.ceil(mo / 12);
   })();
 
-  render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, renterInitial);
+  let bkY = null;
+  for (const d of yd) { if (d.adv >= 0) { bkY = d.y; break; } }
+
+  return { yd, ad, mp, mpMin, downPay, loan, creditAmount, renterInitial, payoffY, bkY };
+}
+// =========================== FANGDAI-ENGINE-END ===========================
+
+function calculate() {
+  const I = getI();
+  $('sliderVal').textContent = I.py + (currentLang === 'zh' ? ' 年' : 'y');
+  render(computeModel(I), I);
 }
 
-function render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, renterInitial) {
-  if (mpMin == null) mpMin = mp;
-  if (creditAmount == null) creditAmount = 0;
-  if (renterInitial == null) renterInitial = downPay;
+function render(M, I) {
+  const { yd, ad, mp, mpMin, downPay, loan, creditAmount, renterInitial, payoffY, bkY } = M;
   const py = I.py;
   const s = yd[py-1];
-  let bkY = null;
-  for (const d of yd) { if(d.adv>=0){bkY=d.y;break;} }
   const y1 = yd[0];
 
   const effRate = (y1.yPT / I.hp * 100).toFixed(2);
@@ -584,7 +626,7 @@ function render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, rent
         <div class="rl"><span class="k">${T('房产税（减免后）','Property Tax (After Exemption)')}</span><span class="v">${F(s.cPT)}</span></div>
         <div class="rl"><span class="k">${T('HOA + PMI + 保险 + 维修','HOA + PMI + Insurance + Maintenance')}</span><span class="v">${F(s.cOth)}</span></div>
         <div class="rl"><span class="k">${T('MCC 税收抵免 (credit)','MCC Tax Credit')}</span><span class="v g">-${F(s.cMCC)}</span></div>
-        <div class="rl"><span class="k">${T('利息+房产税抵扣 (deduction)','Interest + Property Tax Deduction')}</span><span class="v g">-${F(s.cTxDed)}</span></div>
+        <div class="rl"><span class="k">${T('逐项扣除超出标准部分的抵税','Itemized-over-Standard Tax Savings')}</span><span class="v g">-${F(s.cTxDed)}</span></div>
         <div class="rl sep"><span class="k">${T('还清后买房方差额累计投入股市','Buyer Post-Payoff Difference Invested')}</span><span class="v">${F(s.cBuyerInvested)}</span></div>
         <div class="rl"><span class="k">${T('买房方差额投资收益','Buyer Difference Investment Gain')}</span><span class="v g">${F(buyerStockGain)}</span></div>
         <div class="rl"><span class="k">${T('买房方差额投资净值','Buyer Difference Investment Value')}</span><span class="v">${F(s.buyerStk)}</span></div>

@@ -23,6 +23,10 @@ import sys
 from dataclasses import dataclass, asdict, field
 from typing import Optional
 
+# OBBBA (2026, MFJ): non-itemizers may deduct up to $2,000/yr of cash charity
+# above the line. Itemizers include charity in itemized deductions instead.
+CHARITY_ATL_CAP = 2_000.0
+
 
 # -------- inputs --------
 @dataclass
@@ -41,7 +45,11 @@ class Inputs:
     insurance: float = 4_800       # $/yr
     maintenance: float = 3_500     # $/yr
     tax_rate_pct: float = 20.0     # marginal federal
-    mcc_pct: float = 15.0          # MCC certificate rate
+    mcc_pct: float = 0.0           # MCC rate; default 0 — most buyers don't qualify
+    std_deduction: float = 32_200  # standard deduction $/yr (2026 MFJ); inflates yearly
+    salt_cap: float = 40_400       # SALT deduction cap $/yr (OBBBA, 2026)
+    charity: float = 0.0           # charitable cash giving $/yr
+    inflation_pct: float = 2.5     # general inflation; grows the standard deduction
     rent: float = 2_000            # $/mo, year 1
     rent_growth_pct: float = 3.0
     stock_return_pct: float = 8.0
@@ -54,6 +62,9 @@ class Inputs:
         self.pmi = max(0.0, self.pmi)
         self.mcc_pct = max(0.0, min(100.0, self.mcc_pct))
         self.loan_credit_pct = max(0.0, min(100.0, self.loan_credit_pct))
+        self.std_deduction = max(0.0, self.std_deduction)
+        self.salt_cap = max(0.0, self.salt_cap)
+        self.charity = max(0.0, self.charity)
         self.horizon = max(1, min(30, self.horizon))
         return self
 
@@ -73,7 +84,10 @@ class YearRow:
     y_property_tax: float
     y_other: float                 # HOA + ins + mnt + PMI
     y_mcc: float
-    y_tax_deduction_savings: float
+    y_itemized: float              # interest-after-MCC + SALT-capped prop tax + charity
+    y_baseline_deduction: float    # inflated standard deduction (+ non-itemizer charity)
+    itemizing: bool                # True if itemizing beats the standard deduction
+    y_tax_deduction_savings: float # (itemized - baseline, floored at 0) x marginal rate
     y_benefit: float
     y_net_cost: float              # int + PT + other - benefit
     y_rent_total: float
@@ -153,32 +167,50 @@ def compute(I: Inputs) -> Result:
         cur_rent = I.rent * (1 + I.rent_growth_pct / 100.0) ** (y - 1)
         y_rent = cur_rent * 12.0
 
-        y_int = y_prin = y_mcc = y_tx_ded = y_pmi = 0.0
-
+        # Pass 1 — this year's amortization schedule, side-effect free, so the
+        # tax benefit can be computed on ANNUAL totals (deductions are annual
+        # constructs: the standard-deduction floor and SALT cap don't decompose
+        # into months).
+        tb = bal
+        sched: list[tuple[float, float]] = []
+        y_int = 0.0
         for _ in range(12):
-            m_pay = m_int = m_prin = 0.0
-            if bal > 0.01:
-                m_int = bal * mr
-                pay_this_month = min(mp, bal + m_int)
-                m_prin = min(pay_this_month - m_int, bal)
-                m_pay = m_int + m_prin
-                bal = max(0.0, bal - m_prin)
-                cum_prin += m_prin
-            y_int += m_int
+            m_int_s = m_prin_s = 0.0
+            if tb > 0.01:
+                m_int_s = tb * mr
+                pay_s = min(mp, tb + m_int_s)
+                m_prin_s = min(pay_s - m_int_s, tb)
+                tb = max(0.0, tb - m_prin_s)
+            sched.append((m_int_s, m_prin_s))
+            y_int += m_int_s
+
+        # Annual tax math. MCC (if any) is a credit on a share of interest;
+        # only the remainder is deductible. Itemizing only helps by the amount
+        # it EXCEEDS the taxpayer's baseline: the (inflating) standard
+        # deduction plus the OBBBA non-itemizer charity deduction.
+        y_mcc = y_int * mcc_rate
+        ded_int = max(0.0, y_int - y_mcc)
+        salt_ded = min(y_pt, I.salt_cap)
+        y_itemized = ded_int + salt_ded + I.charity
+        std_y = I.std_deduction * (1 + I.inflation_pct / 100.0) ** (y - 1)
+        y_baseline = std_y + min(I.charity, CHARITY_ATL_CAP)
+        itemizing = y_itemized > y_baseline
+        y_tx_ded = max(0.0, y_itemized - y_baseline) * tx_r
+        m_benefit = (y_mcc + y_tx_ded) / 12.0  # smoothed into monthly cash flow
+
+        # Pass 2 — replay the 12 months applying real cash flows.
+        y_prin = y_pmi = 0.0
+        for m_int, m_prin in sched:
+            m_pay = m_int + m_prin
+            bal = max(0.0, bal - m_prin)
+            cum_prin += m_prin
             y_prin += m_prin
 
             pmi = I.pmi if (down_pay + cum_prin < 0.2 * I.home_price) else 0.0
             y_pmi += pmi
 
-            m_mcc = m_int * mcc_rate
-            ded_int = max(0.0, m_int - m_mcc)
-            tx_ded_save = (ded_int + m_pt) * tx_r
-            y_mcc += m_mcc
-            y_tx_ded += tx_ded_save
-            benefit = m_mcc + tx_ded_save
-
             total_buy = m_pay + m_pt + I.hoa + I.insurance / 12.0 + I.maintenance / 12.0 + pmi
-            net_buy = total_buy - benefit
+            net_buy = total_buy - m_benefit
 
             stk *= (1 + smr)
             buyer_stk *= (1 + smr)
@@ -223,6 +255,9 @@ def compute(I: Inputs) -> Result:
             y_property_tax=y_pt,
             y_other=y_other,
             y_mcc=y_mcc,
+            y_itemized=y_itemized,
+            y_baseline_deduction=y_baseline,
+            itemizing=itemizing,
             y_tax_deduction_savings=y_tx_ded,
             y_benefit=y_benefit,
             y_net_cost=y_net_cost,
@@ -344,6 +379,22 @@ def render_text(r: Result, full_table: bool = False) -> str:
         f"Effective property tax (yr 1): {eff_rate_pct:.2f}% (after exemption {_fmt_money(y1.y_property_tax)}/yr)",
         lang,
     ))
+    if y1.itemizing:
+        lines.append(_T(
+            f"税务（年1）: 逐项扣除 {_fmt_money(y1.y_itemized)} > 基准 {_fmt_money(y1.y_baseline_deduction)}"
+            f"，超出部分抵税 {_fmt_money(y1.y_tax_deduction_savings)}/年",
+            f"Tax (yr 1): itemized {_fmt_money(y1.y_itemized)} > baseline {_fmt_money(y1.y_baseline_deduction)}"
+            f" — saves {_fmt_money(y1.y_tax_deduction_savings)}/yr",
+            lang,
+        ))
+    else:
+        lines.append(_T(
+            f"税务（年1）: 逐项扣除 {_fmt_money(y1.y_itemized)} ≤ 标准扣除基准 {_fmt_money(y1.y_baseline_deduction)}"
+            f"，买房不带来额外抵税（$0）",
+            f"Tax (yr 1): itemized {_fmt_money(y1.y_itemized)} ≤ standard baseline {_fmt_money(y1.y_baseline_deduction)}"
+            f" — buying adds $0 in tax savings",
+            lang,
+        ))
     lines.append("")
     lines.append("-" * 72)
     lines.append(_T(
@@ -363,7 +414,7 @@ def render_text(r: Result, full_table: bool = False) -> str:
         (_T("房产税（减免后）", "Property tax (after exemption)", lang), _fmt_money(s.cum_property_tax)),
         (_T("HOA + PMI + 保险 + 维修", "HOA + PMI + Ins + Maint", lang), _fmt_money(s.cum_other)),
         (_T("MCC 抵免（credit）", "MCC tax credit", lang), "-" + _fmt_money(s.cum_mcc).lstrip("-")),
-        (_T("利息+房产税抵扣 (deduction)", "Interest + prop-tax deduction", lang),
+        (_T("逐项扣除超出标准部分的抵税", "Itemized-over-standard tax savings", lang),
             "-" + _fmt_money(s.cum_tax_dedn).lstrip("-")),
         (_T("还清后买房方差额累计投入", "Buyer post-payoff diff invested", lang),
             _fmt_money(s.cum_invested_buyer)),
@@ -467,7 +518,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--insurance",           type=float, default=d.insurance, help="$/yr")
     p.add_argument("--maintenance",         type=float, default=d.maintenance, help="$/yr")
     p.add_argument("--tax-rate-pct",        type=float, default=d.tax_rate_pct, help="Marginal tax rate %%")
-    p.add_argument("--mcc-pct",             type=float, default=d.mcc_pct,   help="MCC certificate rate (0-100)")
+    p.add_argument("--mcc-pct",             type=float, default=d.mcc_pct,
+                   help="MCC certificate rate (0-100); default 0 — MCC programs have income "
+                        "limits most buyers exceed")
+    p.add_argument("--std-deduction",       type=float, default=d.std_deduction,
+                   help="Standard deduction $/yr (2026 MFJ default; single ~$16,100); "
+                        "grows with --inflation-pct")
+    p.add_argument("--salt-cap",            type=float, default=d.salt_cap,
+                   help="SALT deduction cap $/yr (OBBBA 2026; phases down above ~$505k MAGI)")
+    p.add_argument("--charity",             type=float, default=d.charity,
+                   help="Charitable cash giving $/yr (itemized when itemizing; otherwise "
+                        "above-the-line up to $2,000 MFJ)")
+    p.add_argument("--inflation-pct",       type=float, default=d.inflation_pct,
+                   help="General inflation %%/yr — grows the standard deduction")
     p.add_argument("--rent",                type=float, default=d.rent,      help="$/mo, year 1")
     p.add_argument("--rent-growth-pct",     type=float, default=d.rent_growth_pct)
     p.add_argument("--stock-return-pct",    type=float, default=d.stock_return_pct)
@@ -496,6 +559,10 @@ def args_to_inputs(args: argparse.Namespace) -> Inputs:
         maintenance=args.maintenance,
         tax_rate_pct=args.tax_rate_pct,
         mcc_pct=args.mcc_pct,
+        std_deduction=args.std_deduction,
+        salt_cap=args.salt_cap,
+        charity=args.charity,
+        inflation_pct=args.inflation_pct,
         rent=args.rent,
         rent_growth_pct=args.rent_growth_pct,
         stock_return_pct=args.stock_return_pct,

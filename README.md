@@ -32,7 +32,9 @@ Both versions use the same model (mortgage amortized monthly, MCC adjusts deduct
 | APR | `5.0%` | | Insurance | `4800/year` |
 | Loan term | `30 years` | | Maintenance | `3500/year` |
 | Extra monthly | `3500` | | Tax rate | `20%` |
-| Down paid by credits | `yes` | | MCC | `15%` |
+| Down paid by credits | `yes` | | MCC | `0%` |
+| Standard deduction | `32200/yr` (2026 MFJ) | | SALT cap | `40400/yr` (OBBBA 2026) |
+| Charity | `0/yr` | | Inflation | `2.5%` |
 | Rent | `2000/month` | | Rent growth | `3%` |
 | Stock return | `8%` | | Home appreciation | `4%` |
 | Horizon | `20 years` | | | |
@@ -41,8 +43,15 @@ Both versions use the same model (mortgage amortized monthly, MCC adjusts deduct
 
 - Monthly amortization: `interest = remaining_principal × monthly_rate`.
 - PMI applies until equity (down payment + cumulative principal) ≥ 20% of home price.
-- MCC reduces the deductible portion of interest before the federal deduction.
-- Tax savings = `(interest_after_mcc + property_tax) × marginal_rate`.
+- **Tax benefit is incremental over the standard deduction.** Itemized
+  deductions = interest-after-MCC + `min(property_tax, SALT cap)` + charity.
+  They only save tax on the portion above the baseline (the standard
+  deduction, inflating yearly, plus the OBBBA non-itemizer charity deduction
+  of up to $2,000 MFJ): `savings = max(0, itemized − baseline) × marginal_rate`.
+  A buyer whose itemized total never clears the standard deduction gets **$0**
+  from the mortgage-interest deduction.
+- MCC (default **0%** — programs have income limits most buyers exceed) credits
+  a share of interest dollar-for-dollar and removes it from deductible interest.
 - After payoff: only holding costs remain. If rent exceeds holding cost, the difference is invested by the buyer.
 - Sale assumes 7% selling cost.
 
