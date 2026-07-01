@@ -55,7 +55,13 @@ JSON mode (`--json`) emits the full result including all 30 year rows.
 --insurance              Insurance $/yr
 --maintenance            Maintenance $/yr
 --tax-rate-pct           Marginal federal tax rate %
---mcc-pct                MCC certificate rate (0-100)
+--mcc-pct                MCC certificate rate (0-100); default 0
+--std-deduction          Standard deduction $/yr (default 32200 — 2026 MFJ)
+--salt-cap               SALT deduction cap $/yr (default 40400 — OBBBA 2026)
+--charity                Charitable cash giving $/yr (default 0)
+--inflation-pct          Inflation %/yr, grows the standard deduction (default 2.5)
+--selling-cost-pct       Sale transaction cost % of home value (default 6)
+--closing-cost-pct       Purchase closing costs % of price (default 3)
 --rent                   Rent $/mo year 1
 --rent-growth-pct        Annual rent growth %
 --stock-return-pct       Stock annualized return %
@@ -72,11 +78,26 @@ Same as the web app:
 
 - Mortgage amortized monthly: `interest = remaining_principal × monthly_rate`
 - PMI applies until equity (down payment + cumulative principal) reaches 20% of home price
-- MCC reduces the deductible portion of interest before the federal deduction is applied
-- Tax savings = `(interest_after_mcc + property_tax) × marginal_rate`
+- **Tax benefit is incremental over the standard deduction**: itemized =
+  interest-after-MCC + `min(property_tax, SALT cap)` + charity; savings =
+  `max(0, itemized − baseline) × marginal_rate`, where the baseline is the
+  (inflating) standard deduction plus the OBBBA non-itemizer charity deduction
+  (≤ $2,000 MFJ). If itemized never clears the standard deduction, buying adds
+  **$0** in tax savings.
+- MCC (default 0% — income limits disqualify most buyers) credits a share of
+  interest and removes it from deductible interest. Taxes are computed on
+  annual totals, then smoothed into monthly cash flow as 1/12 per month.
 - After payoff: only holding costs (PT + HOA + insurance + maintenance). If rent exceeds holding cost, the difference is invested by the buyer.
-- Sale assumes 7% selling cost.
+- Sale cost defaults to 6% of home value (`--selling-cost-pct`); purchase closing costs default to 3% of price (`--closing-cost-pct`) and are treated as upfront cash the renter alternatively invests.
 
 ## Verifying parity with the web app
 
-The CLI is a line-by-line port of `calculate()` in `index.html`. If you change one, change the other. To check parity, open `index.html` with the same inputs and confirm the cards / sell-P&L tables match the CLI text output.
+The CLI is a port of `computeModel()` in `index.html` (the block between the
+`FANGDAI-ENGINE-BEGIN/END` markers). **If you change one, change the other.**
+Parity is enforced by `tests/test_parity.py`, which extracts the JS engine,
+runs it under Node.js, and compares every year row against the CLI within
+1e-9. Run the whole suite from the repo root:
+
+```bash
+python3 -m unittest discover -s tests
+```

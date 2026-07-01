@@ -46,3 +46,8 @@ house-hunt/data/tract_centroids.json
 house-hunt/data/tract_geometry_2020.json
 house-hunt/data/tsahc_arcgis_webmap.json
 
+
+# Python build artifacts
+*.egg-info/
+__pycache__/
+*.pyc

@@ -150,7 +150,18 @@
         <div class="f"><label>房屋保险（年）</label><div class="iw"><input id="insurance" type="number" value="4800" class="hu"><span class="u">$</span></div></div>
         <div class="f"><label>房屋维修费（年）</label><div class="iw"><input id="maintenance" type="number" value="3500" class="hu"><span class="u">$</span></div></div>
         <div class="f"><label>所得税率</label><div class="iw"><input id="taxRate" type="number" value="20" step="1" class="hu"><span class="u">%</span></div></div>
-        <div class="f"><label>MCC 比例（利息的%）</label><div class="iw"><input id="mccPct" type="number" value="15" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>MCC 比例（利息的%）</label><div class="iw"><input id="mccPct" type="number" value="0" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>标准扣除额（年）</label><div class="iw"><input id="stdDed" type="number" value="32200" min="0" step="100" class="hu"><span class="u">$</span></div></div>
+        <div class="f"><label>SALT 抵扣上限（年）</label><div class="iw"><input id="saltCap" type="number" value="40400" min="0" step="100" class="hu"><span class="u">$</span></div></div>
+        <div class="f"><label>慈善捐款（年）</label><div class="iw"><input id="charity" type="number" value="0" min="0" step="100" class="hu"><span class="u">$</span></div></div>
+        <div class="f"><label>通胀率（扣除额/持有成本涨幅）</label><div class="iw"><input id="inflation" type="number" value="2.5" step="0.1" class="hu"><span class="u">%</span></div></div>
+      </div>
+      <div class="ig">
+        <h3>交易成本</h3>
+        <div class="f"><label>卖房交易费率</label><div class="iw"><input id="sellCost" type="number" value="6" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>购房过户费率</label><div class="iw"><input id="closeCost" type="number" value="3" min="0" max="100" step="0.5" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>资本利得税率（退出）</label><div class="iw"><input id="ltcgRate" type="number" value="15" min="0" max="100" step="0.1" class="hu"><span class="u">%</span></div></div>
+        <div class="f"><label>§121 主房免税上限</label><div class="iw"><input id="sec121Cap" type="number" value="500000" min="0" step="10000" class="hu"><span class="u">$</span></div></div>
       </div>
       <div class="ig">
         <h3>租房对比</h3>
@@ -163,7 +174,7 @@
         <div class="f"><label>房市年增值率</label><div class="iw"><input id="houseReturn" type="number" value="4" step="0.5" class="hu"><span class="u">%</span></div></div>
       </div>
       <button class="btn-calc" onclick="calculate()">计 算</button>
-      <p class="note">* 首付最低3%；credits仅用于首付。还本未达贷款20%时收PMI。月供留空按最低月供；可多还提前还清。MCC：按利息的设定比例作为抵免额，剩余利息+房产税再按所得税率抵税。Homestead、卖房7%见上。</p>
+      <p class="note">* 首付最低3%；credits仅用于首付。还本未达贷款20%时收PMI。月供留空按最低月供；可多还提前还清。税务：MCC（默认0，多数人不符合资格）按利息比例抵免；只有当“税后利息+SALT封顶的房产税+慈善”超过标准扣除额（随通胀增长）时，超出部分才按所得税率抵税。Homestead 见上；卖房/过户费率在「交易成本」中设置。</p>
       <p class="note" style="margin-top:4px;color:var(--text2);">为何有时“越久越亏”？当持有成本高、房市增值(3%)&lt;股市(8%)时，买房每月多花的钱在股市里复利更快，短期会显亏；<strong>多还月供提前还清</strong>后月支出大降，长期买房优势会体现。</p>
     </div>
 
@@ -261,6 +272,7 @@ const T = (zh, en) => currentLang === 'zh' ? zh : en;
 const SCENARIO_FIELD_IDS = [
   'homePrice','downPct','loanCredit','apr','loanYears','customPay','downPayByCredit',
   'propTax','homestead','hoa','pmi','insurance','maintenance','taxRate','mccPct',
+  'stdDed','saltCap','charity','inflation','sellCost','closeCost','ltcgRate','sec121Cap',
   'rent','rentGrowth','stockReturn','houseReturn','planSlider'
 ];
 
@@ -271,19 +283,23 @@ function applyStaticI18n() {
   $('appSubtitle').textContent = T('Texas 买房成本全拆解，对比租房 + 投资股市的真实收益', 'Texas-focused home cost breakdown: Buy vs Rent + Invest');
 
   const groupTitles = document.querySelectorAll('.input-panel .ig h3');
-  const groupTextZh = ['贷款信息', '持有成本 & 税务', '租房对比', '投资回报'];
-  const groupTextEn = ['Loan', 'Holding Costs & Tax', 'Rent Assumptions', 'Investment Returns'];
+  const groupTextZh = ['贷款信息', '持有成本 & 税务', '交易成本', '租房对比', '投资回报'];
+  const groupTextEn = ['Loan', 'Holding Costs & Tax', 'Transaction Costs', 'Rent Assumptions', 'Investment Returns'];
   groupTitles.forEach((el, i) => { el.textContent = T(groupTextZh[i], groupTextEn[i]); });
 
   const labels = document.querySelectorAll('.input-panel .f > label:not([style])');
   const labelsZh = [
     '房屋购买价格', '首付比例', '首付抵扣', '贷款年利率 (APR)', '贷款年限', '每月还款额（可多还）',
     '房产税率（年）', '自住房减免额', 'HOA 月费', 'PMI 月费（还本<20%时）', '房屋保险（年）', '房屋维修费（年）', '所得税率', 'MCC 比例（利息的%）',
+    '标准扣除额（年）', 'SALT 抵扣上限（年）', '慈善捐款（年）', '通胀率（扣除额/持有成本涨幅）',
+    '卖房交易费率', '购房过户费率', '资本利得税率（退出）', '§121 主房免税上限',
     '每月租金', '租金年涨幅', '股市年回报率', '房市年增值率'
   ];
   const labelsEn = [
     'Home Price', 'Down Payment %', 'Credits', 'APR', 'Loan Term', 'Monthly Payment (Optional Extra)',
     'Property Tax Rate (Annual)', 'Homestead Exemption', 'HOA Monthly', 'PMI Monthly (when equity < 20%)', 'Home Insurance (Annual)', 'Maintenance (Annual)', 'Income Tax Rate', 'MCC Rate (% of interest)',
+    'Standard Deduction (Annual)', 'SALT Cap (Annual)', 'Charity (Annual)', 'Inflation (deductions & costs)',
+    'Selling Cost %', 'Closing Cost %', 'LTCG Rate (at exit)', '§121 Exclusion Cap',
     'Monthly Rent', 'Rent Growth (Annual)', 'Stock Return (Annual)', 'Home Appreciation (Annual)'
   ];
   labels.forEach((el, i) => { if (labelsZh[i]) el.textContent = T(labelsZh[i], labelsEn[i]); });
@@ -307,8 +323,8 @@ function applyStaticI18n() {
 
   const notes = document.querySelectorAll('.input-panel .note');
   if (notes[0]) notes[0].textContent = T(
-    '* 首付最低3%；credits仅用于首付。月供留空按最低月供；可多还提前还清。还本未达贷款20%时收PMI。MCC：利息的设定比例作为抵免额，剩余利息+房产税按所得税率抵税。Homestead、卖房7%见上。',
-    '* Min 3% down; credits for down payment only. Empty monthly payment uses minimum. PMI when equity < 20%. MCC: % of interest as credit; remainder + property tax deductible at your rate. Homestead, 7% selling cost included.'
+    '* 首付最低3%；credits仅用于首付。月供留空按最低月供；可多还提前还清。还本未达贷款20%时收PMI。税务：MCC（默认0，多数人不符合资格）按利息比例抵免；只有当“税后利息+SALT封顶的房产税+慈善”超过标准扣除额（随通胀增长）时，超出部分才按所得税率抵税。Homestead 见上；卖房/过户费率在「交易成本」中设置。',
+    '* Min 3% down; credits for down payment only. Empty monthly payment uses minimum. PMI when equity < 20%. Tax: MCC (default 0 — most buyers don\'t qualify) credits a share of interest; itemizing (after-MCC interest + SALT-capped property tax + charity) only saves tax on the portion above the inflating standard deduction. Homestead above; selling & closing costs are configurable under Transaction Costs.'
   );
   if (notes[1]) notes[1].innerHTML = T(
     '为何有时“越久越亏”？当持有成本高、房市增值(3%)&lt;股市(8%)时，买房每月多花的钱在股市里复利更快，短期会显亏；<strong>多还月供提前还清</strong>后月支出大降，长期买房优势会体现。',
@@ -415,38 +431,71 @@ async function shareScenario() {
 }
 
 function getI() {
+  // num(): empty/invalid -> default, but a typed "0" stays 0. The old
+  // `+$(id).value || dflt` pattern silently replaced 0 with the default.
+  const num = (id, dflt) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : dflt; };
   return {
-    hp:+$('homePrice').value||0, dp:Math.max(3, +$('downPct').value||3), apr:+$('apr').value||0,
-    ly:+$('loanYears').value||30, ptr:+$('propTax').value||0, hs:+$('homestead').value||0,
-    hoa:+$('hoa').value||0, pmi:Math.max(0, $('pmi').value===''?315:+$('pmi').value), ins:+$('insurance').value||0, mnt:+$('maintenance').value||0,
-    tr:+$('taxRate').value||0, mccPct: Math.max(0, Math.min(100, +$('mccPct').value || 15)),
-    rent:+$('rent').value||0, rg:+$('rentGrowth').value||0,
-    sr:+$('stockReturn').value||0, hr:+$('houseReturn').value||0,
-    py:Math.min(30,Math.max(1,+$('planSlider').value||10)),
-    customPay: +$('customPay').value || 0,
-    creditsPct: Math.max(0, Math.min(100, +$('loanCredit').value || 0)),
+    hp:num('homePrice',0), dp:Math.max(3, num('downPct',3)), apr:num('apr',0),
+    ly:num('loanYears',30), ptr:num('propTax',0), hs:num('homestead',0),
+    hoa:num('hoa',0), pmi:Math.max(0, num('pmi',315)), ins:num('insurance',0), mnt:num('maintenance',0),
+    tr:num('taxRate',0), mccPct: Math.max(0, Math.min(100, num('mccPct',0))),
+    stdDed:Math.max(0, num('stdDed',32200)), saltCap:Math.max(0, num('saltCap',40400)),
+    charity:Math.max(0, num('charity',0)), inflPct:num('inflation',2.5),
+    sellCostPct:Math.max(0, Math.min(100, num('sellCost',6))),
+    closeCostPct:Math.max(0, Math.min(100, num('closeCost',3))),
+    ltcgPct:Math.max(0, Math.min(100, num('ltcgRate',15))),
+    sec121Cap:Math.max(0, num('sec121Cap',500000)),
+    rent:num('rent',0), rg:num('rentGrowth',0),
+    sr:num('stockReturn',0), hr:num('houseReturn',0),
+    py:Math.min(30,Math.max(1,num('planSlider',10))),
+    customPay: num('customPay',0),
+    creditsPct: Math.max(0, Math.min(100, num('loanCredit',0))),
     downPayByCredit: $('downPayByCredit').checked,
   };
 }
 
-function calculate() {
-  const I = getI();
-  $('sliderVal').textContent = I.py + (currentLang === 'zh' ? ' 年' : 'y');
+// ========================== FANGDAI-ENGINE-BEGIN ==========================
+// Pure calculation engine — NO DOM ACCESS inside this block. It is extracted
+// verbatim and executed under Node.js by tests/test_parity.py, which asserts
+// it stays numerically in sync with the Python port in cli/fangdai.py.
+// If you change the model here, change cli/fangdai.py too (and vice versa).
+const CHARITY_ATL_CAP = 2000; // OBBBA 2026 non-itemizer charity cap (MFJ)
 
+function computeModel(I) {
+  // Normalize inputs exactly like cli/fangdai.py Inputs.normalize(): negative
+  // dollar amounts/rates are clamped; growth/return rates may be negative.
+  I = Object.assign({}, I, {
+    hp: Math.max(0, I.hp), dp: Math.max(3, I.dp), apr: Math.max(0, I.apr),
+    ly: Math.max(1, I.ly), ptr: Math.max(0, I.ptr), hs: Math.max(0, I.hs),
+    hoa: Math.max(0, I.hoa), pmi: Math.max(0, I.pmi),
+    ins: Math.max(0, I.ins), mnt: Math.max(0, I.mnt),
+    tr: Math.max(0, Math.min(100, I.tr)),
+    mccPct: Math.max(0, Math.min(100, I.mccPct)),
+    stdDed: Math.max(0, I.stdDed), saltCap: Math.max(0, I.saltCap),
+    charity: Math.max(0, I.charity),
+    sellCostPct: Math.max(0, Math.min(100, I.sellCostPct)),
+    closeCostPct: Math.max(0, Math.min(100, I.closeCostPct)),
+    ltcgPct: Math.max(0, Math.min(100, I.ltcgPct)),
+    sec121Cap: Math.max(0, I.sec121Cap),
+    rent: Math.max(0, I.rent), customPay: Math.max(0, I.customPay),
+    creditsPct: Math.max(0, Math.min(100, I.creditsPct)),
+  });
   const totalDownPct = Math.max(3, I.dp);
   const downPay = I.hp * totalDownPct / 100;
   const loan = Math.max(0, I.hp - downPay);
   const creditAmount = I.hp * Math.min(I.creditsPct, totalDownPct) / 100;
-  const renterInitial = I.downPayByCredit ? I.hp * Math.max(0, totalDownPct/100 - I.creditsPct/100) : downPay;
+  // Closing costs are cash the buyer pays at purchase on top of the down
+  // payment; the renter invests the same total upfront cash instead.
+  const closingCosts = I.hp * I.closeCostPct / 100;
+  const renterInitial = (I.downPayByCredit ? I.hp * Math.max(0, totalDownPct/100 - I.creditsPct/100) : downPay) + closingCosts;
 
   const mr = I.apr / 100 / 12;
   const np = I.ly * 12;
-  const loanOrig = loan;
 
   let mpMin = 0;
   if (loan > 0 && mr > 0) { const p = Math.pow(1+mr,np); mpMin = loan*mr*p/(p-1); }
   else if (loan > 0) { mpMin = loan/np; }
-  const mp = (I.customPay > 0 && I.customPay >= mpMin) ? I.customPay : mpMin;
+  const mp = loan <= 0 ? 0 : ((I.customPay > 0 && I.customPay >= mpMin) ? I.customPay : mpMin);
 
   const smr = Math.pow(1 + I.sr/100, 1/12) - 1;
   const txR = I.tr / 100;
@@ -458,6 +507,7 @@ function calculate() {
   const yd=[], ad=[];
 
   for (let y=1; y<=30; y++) {
+    const infl = Math.pow(1 + I.inflPct/100, y-1);
     const hvs = I.hp * Math.pow(1+I.hr/100, y-1);
     const hve = I.hp * Math.pow(1+I.hr/100, y);
     const taxable = Math.max(0, hvs - I.hs);
@@ -465,63 +515,112 @@ function calculate() {
     const mPT = yPT / 12;
     const curRent = I.rent * Math.pow(1+I.rg/100, y-1);
     const yRent = curRent * 12;
+    // Holding costs grow with inflation (rent already grows; keeping these
+    // flat silently favored buying on long horizons). PMI stays nominal.
+    const hoaM = I.hoa * infl;
+    const insY = I.ins * infl;
+    const mntY = I.mnt * infl;
 
-    let yInt=0, yPrin=0, yMCC=0, yTxDed=0, yPMI=0;
-
+    // Pass 1 — the year's amortization schedule, side-effect free, so the
+    // tax benefit can be computed on ANNUAL totals (the standard-deduction
+    // floor and SALT cap are annual constructs, not monthly ones).
+    let tb = bal, yInt = 0;
+    const sched = [];
     for (let m=1; m<=12; m++) {
-      let mPay=0, mInt=0, mPrin=0;
-      if (bal > 0.01) {
-        mInt = bal * mr;
-        const payThisMonth = Math.min(mp, bal + mInt);
-        mPrin = Math.min(payThisMonth - mInt, bal);
-        mPay = mInt + mPrin;
-        bal = Math.max(0, bal - mPrin);
-        cumPrin += mPrin;
+      let mIntS=0, mPrinS=0;
+      if (tb > 0.01) {
+        mIntS = tb * mr;
+        const payS = Math.min(mp, tb + mIntS);
+        mPrinS = Math.min(payS - mIntS, tb);
+        tb = Math.max(0, tb - mPrinS);
       }
-      yInt += mInt; yPrin += mPrin;
+      sched.push([mIntS, mPrinS]);
+      yInt += mIntS;
+    }
+
+    // Annual tax math. MCC (if any) credits a share of interest; only the
+    // remainder is deductible. Itemizing helps only by the amount it EXCEEDS
+    // the baseline: the inflating standard deduction plus the OBBBA
+    // non-itemizer charity deduction.
+    const yMCC = yInt * mccRate;
+    const dedInt = Math.max(0, yInt - yMCC);
+    const saltDed = Math.min(yPT, I.saltCap);
+    const yItemized = dedInt + saltDed + I.charity;
+    const stdY = I.stdDed * infl;
+    // Baseline = what the same taxpayer deducts WITHOUT the house: the better
+    // of (standard deduction + non-itemizer charity) and itemizing the
+    // charity alone — a big giver itemizes even without buying.
+    const yBaseline = Math.max(stdY + Math.min(I.charity, CHARITY_ATL_CAP), I.charity);
+    const itemizing = yItemized > yBaseline;
+    const yTxDed = Math.max(0, yItemized - yBaseline) * txR;
+    const mBenefit = (yMCC + yTxDed) / 12; // smoothed into monthly cash flow
+
+    // Pass 2 — replay the 12 months applying real cash flows.
+    let yPrin=0, yPMI=0;
+    for (let m=1; m<=12; m++) {
+      const mInt = sched[m-1][0], mPrin = sched[m-1][1];
+      const mPay = mInt + mPrin;
+      bal = Math.max(0, bal - mPrin);
+      cumPrin += mPrin;
+      yPrin += mPrin;
 
       const pmi = (downPay + cumPrin < 0.2 * I.hp) ? I.pmi : 0;
       yPMI += pmi;
 
-      const mMCC = mInt * mccRate;
-      const dedInt = Math.max(0, mInt - mMCC);
-      const txDed = (dedInt + mPT) * txR;
-      const benefit = mMCC + txDed;
-      yMCC += mMCC; yTxDed += txDed;
-
-      const totalBuy = mPay + mPT + I.hoa + I.ins/12 + I.mnt/12 + pmi;
-      const netBuy = totalBuy - benefit;
+      const totalBuy = mPay + mPT + hoaM + insY/12 + mntY/12 + pmi;
+      const netBuy = totalBuy - mBenefit;
       stk = stk * (1 + smr);
       buyerStk = buyerStk * (1 + smr);
 
-      if (mPay > 0) {
-        const diff = netBuy - curRent;
+      // Whoever pays less for housing this month invests the difference:
+      // positive diff (owning costs more) -> the renter invests it; negative
+      // diff (renting costs more) -> the buyer invests it. One rule for all
+      // regimes (mortgage active, post-payoff, all-cash) keeps both
+      // portfolios non-negative, keeps the verdict sensitive to rent after
+      // payoff, and taxes each side's own gains at exit.
+      const diff = netBuy - curRent;
+      if (diff >= 0) {
         cInvested += diff;
         stk += diff;
       } else {
-        const buyerDiff = Math.max(0, curRent - netBuy);
-        cBuyerInvested += buyerDiff;
-        buyerStk += buyerDiff;
+        cBuyerInvested += -diff;
+        buyerStk += -diff;
       }
 
-      if (y<=5) ad.push({month:(y-1)*12+m, payment:mPay, principal:mPrin, interest:mInt, balance:bal, totalBuy, taxSave:benefit, rent:curRent});
+      if (y<=5) ad.push({month:(y-1)*12+m, payment:mPay, principal:mPrin, interest:mInt, balance:bal, totalBuy, taxSave:mBenefit, rent:curRent});
     }
 
-    const yOth = I.hoa*12 + I.ins + I.mnt + yPMI;
+    const yOth = hoaM*12 + insY + mntY + yPMI;
     cP+=yPrin; cInt+=yInt; cPT+=yPT; cOth+=yOth; cMCC+=yMCC; cTxDed+=yTxDed; cRent+=yRent;
     const yBenefit = yMCC + yTxDed;
     const cBenefit = cMCC + cTxDed;
     const yNetCost = yInt + yPT + yOth - yBenefit;
     const cNetCost = cInt + cPT + cOth - cBenefit;
 
-    const sale = hve * 0.93;
+    const sale = hve * (1 - I.sellCostPct / 100);
     const bw = sale - Math.max(0, bal);
     const bt = bw + buyerStk;
     const adv = bt - stk;
 
+    // After-tax exit if both parties liquidate at end of year y: the buyer's
+    // primary-home gain is §121-exempt up to sec121Cap (2-of-5-years
+    // ownership+use, so no exclusion in year 1); stock gains on BOTH sides
+    // are taxed at the LTCG rate. Contribution totals approximate basis.
+    const ltcg = I.ltcgPct / 100;
+    const homeGain = sale - (I.hp + closingCosts);
+    const excl = (y >= 2) ? I.sec121Cap : 0;
+    const taxableHomeGain = Math.max(0, homeGain - excl);
+    const buyerStkGain = Math.max(0, buyerStk - cBuyerInvested);
+    const buyerExitTax = (taxableHomeGain + buyerStkGain) * ltcg;
+    const renterExitTax = Math.max(0, stk - cInvested) * ltcg;
+    const btAT = bt - buyerExitTax;
+    const rwAT = stk - renterExitTax;
+    const advAT = btAT - rwAT;
+
     yd.push({
       y, hve, bal:Math.max(0,bal), sale, bw, bt, rw:stk, buyerStk, adv,
-      yPrin, yInt, yPT, yOth, yMCC, yTxDed, yBenefit, yNetCost,
+      buyerExitTax, renterExitTax, btAT, rwAT, advAT,
+      yPrin, yInt, yPT, yOth, yMCC, yItemized, yBaseline, itemizing, yTxDed, yBenefit, yNetCost,
       yRent, yExtra:yNetCost-yRent, rent:curRent,
       cP, cInt, cPT, cOth, cMCC, cTxDed, cBenefit, cNetCost,
       cRent, cExtra:cNetCost-cRent, cInvested, cBuyerInvested, stk,
@@ -529,31 +628,40 @@ function calculate() {
   }
 
   const payoffY = (() => {
+    if (loan <= 0) return null; // all-cash: no loan to pay off (matches CLI)
     let b = loan, mo = 0, mrr = I.apr/100/12;
-    while (b > 0.01 && mo < 360) {
+    const maxMo = np + 12; // cover the full term, not a hardcoded 30y
+    while (b > 0.01 && mo < maxMo) {
       const mInt = b * mrr;
       const pay = Math.min(mp, b + mInt);
       const mPrin = Math.min(pay - mInt, b);
       b -= mPrin;
       mo++;
     }
-    return Math.ceil(mo / 12);
+    return b <= 0.01 ? Math.ceil(mo / 12) : null; // null if never paid off
   })();
 
-  render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, renterInitial);
+  let bkY = null, bkYAT = null;
+  for (const d of yd) { if (d.adv >= 0) { bkY = d.y; break; } }
+  for (const d of yd) { if (d.advAT >= 0) { bkYAT = d.y; break; } }
+
+  return { yd, ad, mp, mpMin, downPay, loan, creditAmount, closingCosts, renterInitial, payoffY, bkY, bkYAT };
+}
+// =========================== FANGDAI-ENGINE-END ===========================
+
+function calculate() {
+  const I = getI();
+  $('sliderVal').textContent = I.py + (currentLang === 'zh' ? ' 年' : 'y');
+  render(computeModel(I), I);
 }
 
-function render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, renterInitial) {
-  if (mpMin == null) mpMin = mp;
-  if (creditAmount == null) creditAmount = 0;
-  if (renterInitial == null) renterInitial = downPay;
+function render(M, I) {
+  const { yd, ad, mp, mpMin, downPay, loan, creditAmount, closingCosts, renterInitial, payoffY, bkY, bkYAT } = M;
   const py = I.py;
   const s = yd[py-1];
-  let bkY = null;
-  for (const d of yd) { if(d.adv>=0){bkY=d.y;break;} }
   const y1 = yd[0];
 
-  const effRate = (y1.yPT / I.hp * 100).toFixed(2);
+  const effRate = I.hp > 0 ? (y1.yPT / I.hp * 100).toFixed(2) : '0.00';
   const customPay = I.customPay > 0 && I.customPay >= mpMin;
   const paySub = customPay
     ? T(`最低${F(mpMin)} · 约${payoffY}年还清`, `Min ${F(mpMin)} · payoff in ~${payoffY}y`)
@@ -563,9 +671,9 @@ function render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, rent
 
   $('scards').innerHTML = `
     <div class="sc blue"><div class="sl">${customPay ? T('实际月供','Actual Monthly Payment') : T('每月月供','Monthly Payment')}</div><div class="sv">${F(mp)}</div><div class="ss">${paySub}</div></div>
-    <div class="sc ${bkY?'green':'red'}"><div class="sl">${T('盈亏平衡','Breakeven')}</div><div class="sv">${bkY?T('第'+bkY+'年', 'Year '+bkY):T('30年内无','No breakeven in 30y')}</div><div class="ss">${bkY?T('买房优于租房+投资','Buying beats renting+investing'):T('租房+投资更划算','Renting+investing is better')}</div></div>
+    <div class="sc ${bkY?'green':'red'}"><div class="sl">${T('盈亏平衡（税前）','Breakeven (Pre-Tax)')}</div><div class="sv">${bkY?T('第'+bkY+'年', 'Year '+bkY):T('30年内无','None in 30y')}</div><div class="ss">${bkYAT?T('税后(§121)：第'+bkYAT+'年','After-tax (§121): Yr '+bkYAT):T('税后(§121)：30年内无','After-tax (§121): none')}</div></div>
     <div class="sc ${y1.adv>=0?'green':'red'}"><div class="sl">${T('第1年盈亏','Year 1 P&L')}</div><div class="sv">${F(y1.adv)}</div><div class="ss">${T('vs 租房+投资','vs Rent+Invest')}</div></div>
-    <div class="sc ${s.adv>=0?'green':'red'}"><div class="sl">${T(`第${py}年盈亏`,`Year ${py} P&L`)}</div><div class="sv">${F(s.adv)}</div><div class="ss">${T('你选的居住年限','Your selected horizon')}</div></div>
+    <div class="sc ${s.adv>=0?'green':'red'}"><div class="sl">${T(`第${py}年盈亏`,`Year ${py} P&L`)}</div><div class="sv">${F(s.adv)}</div><div class="ss">${T('税后(§121)：','After-tax (§121): ')+F(s.advAT)}</div></div>
     <div class="sc teal"><div class="sl">${T('实际房产税','Effective Property Tax')}</div><div class="sv">${effRate}%</div><div class="ss">${T(`减免后${F(y1.yPT)}/年`,`After exemption ${F(y1.yPT)}/yr`)}</div></div>`;
 
   // Cumulative report
@@ -584,8 +692,8 @@ function render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, rent
         <div class="rl"><span class="k">${T('房产税（减免后）','Property Tax (After Exemption)')}</span><span class="v">${F(s.cPT)}</span></div>
         <div class="rl"><span class="k">${T('HOA + PMI + 保险 + 维修','HOA + PMI + Insurance + Maintenance')}</span><span class="v">${F(s.cOth)}</span></div>
         <div class="rl"><span class="k">${T('MCC 税收抵免 (credit)','MCC Tax Credit')}</span><span class="v g">-${F(s.cMCC)}</span></div>
-        <div class="rl"><span class="k">${T('利息+房产税抵扣 (deduction)','Interest + Property Tax Deduction')}</span><span class="v g">-${F(s.cTxDed)}</span></div>
-        <div class="rl sep"><span class="k">${T('还清后买房方差额累计投入股市','Buyer Post-Payoff Difference Invested')}</span><span class="v">${F(s.cBuyerInvested)}</span></div>
+        <div class="rl"><span class="k">${T('逐项扣除超出标准部分的抵税','Itemized-over-Standard Tax Savings')}</span><span class="v g">-${F(s.cTxDed)}</span></div>
+        <div class="rl sep"><span class="k">${T('买房方差额累计投入股市','Buyer Difference Invested')}</span><span class="v">${F(s.cBuyerInvested)}</span></div>
         <div class="rl"><span class="k">${T('买房方差额投资收益','Buyer Difference Investment Gain')}</span><span class="v g">${F(buyerStockGain)}</span></div>
         <div class="rl"><span class="k">${T('买房方差额投资净值','Buyer Difference Investment Value')}</span><span class="v">${F(s.buyerStk)}</span></div>
         <div class="rl total"><span class="k">${T('净成本（不含还本金）','Net Cost (Excl. Principal)')}</span><span class="v r">${F(s.cNetCost)}</span></div>
@@ -593,7 +701,7 @@ function render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, rent
       <div class="rbox"><h4>${T(`租房 ${py} 年 + 股市投资`,`Renting ${py} Years + Stock Investing`)}</h4>
         <div class="rl"><span class="k">${T(`${py}年累计租金`,`${py}-Year Total Rent`)}</span><span class="v">${F(s.cRent)}</span></div>
         <div class="rl"><span class="k">${T('买房净成本比租房多花','Buy Net Cost minus Rent')}</span><span class="v ${s.cExtra>0?'r':'g'}">${F(s.cExtra)}</span></div>
-        <div class="rl sep"><span class="k">${I.downPayByCredit ? T('首付自付部分（租房方可炒股）','Out-of-Pocket Down (Renter Invests This)') : T('首付投入股市','Down Payment Invested')}</span><span class="v">${F(renterInitial)}</span></div>
+        <div class="rl sep"><span class="k">${I.downPayByCredit ? T('首付自付+过户费（租房方投资）','Out-of-Pocket Down + Closing (Renter Invests)') : T('首付+过户费投入股市','Down + Closing Invested')}</span><span class="v">${F(renterInitial)}</span></div>
         <div class="rl"><span class="k">${T('每月差额累计投入','Cumulative Monthly Difference Invested')}</span><span class="v">${F(s.cInvested - renterInitial)}</span></div>
         <div class="rl"><span class="k">${T(`股市投资收益 (${I.sr}%/年)`,`Stock Investment Gain (${I.sr}%/yr)`)}</span><span class="v g">${F(stockGain)}</span></div>
         <div class="rl total"><span class="k">${T('股市投资总值','Stock Portfolio Value')}</span><span class="v">${F(s.stk)}</span></div>
@@ -601,7 +709,7 @@ function render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, rent
     </div></div>`;
 
   // 卖房盈亏计算表
-  const sellingFee = s.hve * 0.07;
+  const sellingFee = s.hve * I.sellCostPct / 100;
   const saleIncome = s.hve - sellingFee;
   const cashAfterSale = saleIncome - s.bal;
   const buyerTotalAsset = cashAfterSale + s.buyerStk;
@@ -611,23 +719,35 @@ function render(yd, ad, mp, mpMin, downPay, loan, I, payoffY, creditAmount, rent
     <table class="calc-table">
       <tr class="section-head"><td colspan="2">${T('Step 1: 卖房能拿到多少钱','Step 1: Net Proceeds from Selling')}</td></tr>
       <tr><td>${T(`房屋市值（第${py}年末）`,`Home Value (End of Year ${py})`)}</td><td>${F(s.hve)}</td></tr>
-      <tr><td>${T('− 卖房交易费用（7%）','− Selling Cost (7%)')}</td><td style="color:var(--danger)">−${F(sellingFee)}</td></tr>
+      <tr><td>${T(`− 卖房交易费用（${I.sellCostPct}%）`,`− Selling Cost (${I.sellCostPct}%)`)}</td><td style="color:var(--danger)">−${F(sellingFee)}</td></tr>
       <tr><td>${T('= 卖房收入','= Sale Proceeds')}</td><td>${F(saleIncome)}</td></tr>
       <tr><td>${T('− 剩余贷款余额','− Remaining Loan Balance')}</td><td style="color:var(--danger)">−${F(s.bal)}</td></tr>
       <tr class="sub"><td>${T('= 卖房现金到手','= Cash After Sale')}</td><td style="color:var(--primary)">${F(cashAfterSale)}</td></tr>
-      <tr><td>${T('+ 还清后买房方差额投资净值','+ Buyer Post-Payoff Investment Value')}</td><td style="color:var(--primary)">${F(s.buyerStk)}</td></tr>
+      <tr><td>${T('+ 买房方差额投资净值','+ Buyer Investment Value')}</td><td style="color:var(--primary)">${F(s.buyerStk)}</td></tr>
       <tr class="sub"><td>${T('= 买房方总净值 (A)','= Buyer Total Net Asset (A)')}</td><td style="color:var(--primary)">${F(buyerTotalAsset)}</td></tr>
 
       <tr class="spacer"><td colspan="2"></td></tr>
       <tr class="section-head2"><td colspan="2">${T('Step 2: 如果租房，首付+多花的钱投股市值多少','Step 2: Rent + Invest Net Value')}</td></tr>
-      <tr><td>${I.downPayByCredit ? T('首付自付部分（租房方可炒股）','Out-of-Pocket Down (Renter Invests This)') : T('首付金额（初始投入股市）','Initial Down Payment Investment')}</td><td>${F(renterInitial)}</td></tr>
+      <tr><td>${I.downPayByCredit ? T('首付自付+过户费（租房方投资）','Out-of-Pocket Down + Closing (Renter Invests)') : T('首付+过户费（初始投入股市）','Down + Closing (Initial Investment)')}</td><td>${F(renterInitial)}</td></tr>
       <tr><td>${T('+ 买房比租房每月多花累计投入','+ Cumulative Monthly Difference Invested')}</td><td>${F(s.cInvested - renterInitial)}</td></tr>
       <tr><td>${T(`+ ${py}年股市投资收益（年化${I.sr}%）`,`+ ${py}-Year Stock Gain (${I.sr}% annualized)`)}</td><td style="color:var(--success)">${F(stockGain)}</td></tr>
       <tr class="sub"><td>${T('= 租房+投资净值 (B)','= Renter Net Value (B)')}</td><td style="color:var(--warning)">${F(s.stk)}</td></tr>
 
       <tr class="spacer"><td colspan="2"></td></tr>
       <tr class="final"><td>${T('买房盈亏 = A − B','Buy P&L = A − B')}</td><td style="color:var(${s.adv>=0?'--success':'--danger'})">${F(s.adv)}</td></tr>
+
+      <tr class="spacer"><td colspan="2"></td></tr>
+      <tr class="section-head"><td colspan="2">${T('Step 3: 税后对比（§121 主房免税 + 股票增值缴税）','Step 3: After-Tax (§121 exclusion + LTCG on stocks)')}</td></tr>
+      <tr><td>${T('− 买房方退出税（房+股）','− Buyer Exit Tax (home + stocks)')}</td><td style="color:var(--danger)">−${F(s.buyerExitTax)}</td></tr>
+      <tr class="sub"><td>${T('= 买房方税后净值 (A′)','= Buyer After-Tax Value (A′)')}</td><td style="color:var(--primary)">${F(s.btAT)}</td></tr>
+      <tr><td>${T('− 租房方资本利得税','− Renter Capital-Gains Tax')}</td><td style="color:var(--danger)">−${F(s.renterExitTax)}</td></tr>
+      <tr class="sub"><td>${T('= 租房方税后净值 (B′)','= Renter After-Tax Value (B′)')}</td><td style="color:var(--warning)">${F(s.rwAT)}</td></tr>
+      <tr class="final"><td>${T('税后买房盈亏 = A′ − B′','After-Tax Buy P&L = A′ − B′')}</td><td style="color:var(${s.advAT>=0?'--success':'--danger'})">${F(s.advAT)}</td></tr>
     </table>
+    <p class="note" style="margin-top:8px">${T(
+      '税后行假设买卖双方都在该年清仓变现：买房方主房增值在 §121 上限内免税（第2年起，需自住满2年），双方股票收益按资本利得税率缴税。若租房方不卖股票，其税负可无限期递延，此时应看税前行。',
+      'After-tax rows assume BOTH parties liquidate that year: the buyer&#39;s home gain is §121-exempt up to the cap (from year 2 — requires 2 years of use); stock gains on both sides are taxed at the LTCG rate. A renter who keeps holding defers the tax indefinitely — compare pre-tax rows in that case.'
+    )}</p>
     <div class="conclusion" style="margin-top:14px">
       <div class="ci"><div class="ci-label">${T('买房方总净值 (A)','Buyer Total Net Asset (A)')}</div><div class="ci-value" style="color:var(--primary)">${F(buyerTotalAsset)}</div></div>
       <div class="ci"><div class="ci-label">${T('租房+投资净值 (B)','Renter Net Value (B)')}</div><div class="ci-value" style="color:var(--warning)">${F(s.stk)}</div></div>
